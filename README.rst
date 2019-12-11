@@ -25,75 +25,173 @@ All methods exposed by the Environment accept a key and a default.
   been found in the environment, and thus serves as a documented example of a valid
   value to export as an environment variable. Enforced value documentation!
 
-Example usage
--------------
+A series of examples
+--------------------
 
-A short series of some of the options::
+A short overview of all of the available check/cast methods on an ``Environment`` follows
 
-    from enviable import env, Environment
-    # the module level `env` is a premade `Environment` to work with and is
-    # roughly the same as `myenv = Environment(os.environ)`
+Assume all examples are prefixed with::
 
-    DEBUG = env.bool("DEBUG", "off")
-    GIT_HASH = env.hex("COMMIT_REF", "11ff3fe8ccfa4bbd9c144f68b84c80f6")
-    SERVER_EMAIL = env.email("DEFAULT_EMAIL", "a@b.com")
-    DYANMIC_IMPORT = env.importable("MY_MODULE", "path.to.mymodule")
-    LOCAL_FILE = env.filepath("ACCESS_KEYS", "/valid/path/to/keys.json")
-    API_URL = env.web_address("API_URL", "https://example.com/")
+    from enviable import env
 
-    # Iterables
-    NUMBERS = env.tuple("NUMBERS", "(12,3,456)", converter=env.ensure.int)
-    UNORDERED_NUMBERS = env.frozenset("NUMBERS", "12, 3, 456", converter=env.ensure.int)
-    DICTISH = env.dict("WOO", "a=1, b=2, c=3", key_converter=env.ensure.text, value_converter=env.ensure.int)
+which is roughly equivalent to::
 
-    # Raw text *followed* by conversion
-    DEEPER_DEBUG = env.ensure.bool(env.text("DEBUG_DEEPLY", "1"))
+    from enviable import Environment
+    import os
+    env = Environment(os.environ)
 
-Handling errors
----------------
+Remember, the **second** argument (``default``) is always a string, and always
+gets parsed the same as a real value, so treat it as an example value in the following...
 
-Failing to successfully convert (or just validate) the value (whether from
-the environment or from the fallback) immediately halts execution by raising
-``EnvironmentCastError`` which is a subclass of ``ValueError`` - it is recommended
-that you only catch the former.
+Conversions and validations
+^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Types
------
+To trim any accidental quotes or whitespace from the beginning and end of the value::
 
-Should be able to handle the following:
+    env.text("VAR_NAME", "'   test '") == "test"
 
-- text
-- integer
-- boolean
-- uuid (with and without hyphens)
-- email (checks the string is email-like. Does not fully parse/validate, because that's a fool's errand)
-- hex (validates the string)
-- base64 encoded data (validates it decodes)
-- decimal
-- importable python paths (validates the string)
-- file paths (validates the file exists and is readable)
-- directories (validates the directory exists)
-- URLs (sanity-checks the string ... ish)
-- tuples/lists/sets/frozensets of any of the above
-- dictionaries, with separate key & value conversion
-- json
+To convert an incoming string to an integer::
 
-If `Django`_ is installed (sorry, I'm lazy) it should also handle:
+    env.int("VAR_NAME", "3") == 3
 
-- datetime
-- date
-- time
+To convert an incoming string to real boolean (``True`` or ``False``), note
+that upper or lower case doesn't matter::
+
+    env.bool("VAR_NAME", "true") is True
+    env.bool("VAR_NAME", "on") is True
+    env.bool("VAR_NAME", "1") is True
+    env.bool("VAR_NAME", "yes") is True
+    env.bool("VAR_NAME", "y") is True
+
+    env.bool("VAR_NAME", "false") is False
+    env.bool("VAR_NAME", "off") is False
+    env.bool("VAR_NAME", "0") is False
+    env.bool("VAR_NAME", "no") is False
+    env.bool("VAR_NAME", "n") is False
+
+To make a ``uuid.UUID`` from an optionally hyphenated string::
+
+    env.uuid("VAR_NAME", "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa") == UUID('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa')
+    env.uuid("VAR_NAME", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa") == UUID('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa')
+
+To *check* if an email *looks* valid::
+
+    env.email("VAR_NAME", "a@b.com") == "a@b.com"
+
+To verify if a string is all hexi characters::
+
+    env.hex("VAR_NAME", "abcdef12345ABCDEF") == "abcdef12345ABCDEF"
+
+Confirm that a string can be decoded from a base64 encoded value::
+
+    env.b64("VAR_NAME", "d29vZg==") == 'd29vZg=='
+
+There's no support for ``float`` because it's lossy, but you can have decimals::
+
+    env.decimal("VAR_NAME", "1.25") == Decimal("1.25")
+
+To confirm that a string looks like it might be an importable python thing::
+
+    env.importable("VAR_NAME", "path.to.my.module") == "path.to.my.module"
+
+To make sure a string represents a readable file on disk::
+
+    env.filepath("VAR_NAME", "/path/to/my/valid_file.json") == "/path/to/my/valid_file.json"
+
+To make sure a string is desginated a directory which exists::
+
+    env.directory("VAR_NAME", "/path/to/my") == "/path/to/my"
+
+To *vaguely* sanity-check URLs (must start with ``http://`` or ``https://`` or ``//`` or ``/...``)::
+
+    env.web_address("VAR_NAME", "http://example.com/")
+
+and to go off-reservation, you can get JSON out, or the raw environment string::
+
+    env.json("VAR_NAME", "{}") == {}
+    env.raw("VAR_NAME", "'   ...  '") == "'   ...  '"
+
+Temporal values (datetimes, dates, times)
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+If you have `Django`_ installed (because that's my main use case and I'm lazy)
+you can also get datetimes if you provide a value in ISO 8601 format::
+
+    env.datetime("VAR_NAME", "2019-11-21 16:12:56.002344")
+    env.datetime("VAR_NAME", "2019-11-21 16:12:56.002344+20:00")
+    env.datetime("VAR_NAME", "2019-11-21")
+
+Similarly you can ask for dates::
+
+    env.date("VAR_NAME", "2019-11-21")
+    env.date("VAR_NAME", "2019-11-2")
+    env.date("VAR_NAME", "2019-3-2")
+
+or times::
+
+    env.time("VAR_NAME", "13:13:13.000123")
+    env.time("VAR_NAME", "13:13:13.123")
+    env.time("VAR_NAME", "13:13:13")
+    env.time("VAR_NAME", "13:13")
+
+Iterables
+^^^^^^^^^
+
+It's additionally possible to consume a string and cast it to a sequence etc::
+
+    env.tuple("VAR_NAME", "123,4356,235") == ("123", "4356", "235")
+    env.list("VAR_NAME", "123,4356,235") == ["123", "4356", "235"]
+    env.set("VAR_NAME", "123,4356,235") == {"123", "4356", "235"}
+    env.frozenset("VAR_NAME", "123,4356,235") == {"123", "4356", "235"}
+    env.dict("VAR_NAME", "a=1, b=2, c=3") == {"a": "1", "b": "2", "c": "3"}
+
+Commas are treated as delimiters, and may optionally have a single space after each one.
+
+Leading python-iterable characters are dropped if they are present from both sides,
+and their python type is ignored::
+
+    env.tuple("VAR_NAME", "[123, 4356, 235]") == ("123", "4356", "235")
+    env.tuple("VAR_NAME", "(123, 4356, 235)") == ("123", "4356", "235")
+    env.tuple("VAR_NAME", "{123, 4356, 235}") == ("123", "4356", "235")
+
 
 Casting on iterables
---------------------
+^^^^^^^^^^^^^^^^^^^^
 
 Using any of ``env.tuple``, ``env.list``, ``env.set``, ``env.frozenset``,
 or ``env.dict`` allows each parsed value to be validated and optionally cast,
 with the caveat that the *iterable is homogenous* (that is, everything can be
 converted to an ``int`` or a ``uuid`` or whatever)
 
+Each value may be cast to any of the non-iterable methods documented above, by using
+``env.ensure.methodname`` instead of ``env.methodname``, for example::
+
+    env.tuple("VAR_NAME", "123,4356,235", converter=env.ensure.int) == (123, 4356, 235)
+    env.set("VAR_NAME", "123,4356,235", converter=env.ensure.hex) == {"123", "4356", "235"}
+    env.list("VAR_NAME", "a@b.com, b@c.com, def@ghi", env.ensure.email) == ['a@b.com', 'b@c.com', 'def@ghi']
+
 ``env.dict`` is slightly special in that it has arguments for ``key_converter`` and ``value_converter``
-so that keys can have a different type to values. Both must still be homogenous.
+so that keys can have a different type to values. Both must still be homogenous::
+
+    env.dict("VAR_NAME", "a=1, b=2, c=3", key_converter=env.ensure.hex, value_converter=env.ensure.int) == {'a': 1, 'c': 3, 'b': 2}
+
+Handling errors
+---------------
+
+Failing to successfully convert (or just validate) the value (whether from
+the environment or from the fallback) immediately halts execution by raising
+``EnvironmentCastError`` which is a subclass of ``ValueError``.
+
+Failing to provide a **string** for a default/fallback value will
+raise ``EnvironmentDefaultError`` which is *also* a subclass of ``ValueError``.
+
+To catch any *anticipated* error then, is to::
+
+    try:
+        ...
+    except (EnvironmentCastError, EnvironmentDefaultError) as e:
+        ...
+
 
 Running the tests
 -----------------
@@ -107,7 +205,6 @@ and see the output of the various tests I've bothered with.
 TODO
 ----
 
-- Examples of every type / method
 - More tests
 
 The license

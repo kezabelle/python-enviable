@@ -20,11 +20,10 @@ The default MUST be a string, as it is subject to the same parsing as if it had
 been found in the environment, and thus serves as a documented example of a valid
 value to export as an environment variable. Enforced value documentation!
 
-A short series of examples follow::
+A short series of examples follow; see the README.rst file for a fuller explanation::
 
     from enviable import env
     DEBUG = env.bool("DEBUG", "off")
-    DEEPER_DEBUG = env.ensure.bool(env.text("DEBUG_DEEPLY", "1"))
     GIT_HASH = env.hex("COMMIT_REF", "11ff3fe8ccfa4bbd9c144f68b84c80f6")
     SERVER_EMAIL = env.email("DEFAULT_EMAIL", "a@b.com")
     DYANMIC_IMPORT = env.importable("MY_MODULE", "path.to.mymodule")
@@ -445,8 +444,10 @@ class Environment(object):
 
         if value.lstrip() != value:
             logger.warning("Whitespace exists at beginning of %s", key)
+            value = value.lstrip()
         elif value.rstrip() != value:
             logger.warning("Whitespace exists at end of %s", key)
+            value = value.rstrip()
 
         return value
 
