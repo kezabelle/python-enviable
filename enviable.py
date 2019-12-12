@@ -398,12 +398,15 @@ class Environment(object):
         self.ensure = EnvironmentCaster()
 
     def __repr__(self):  # type: ignore
+        used = {x[0] for x in self.used}
+        fallbacks = {x[0] for x in self.fallbacks}
         return "<Environment: from source={0}, from defaults={1}>".format(
-            sorted(x[0] for x in self.used), sorted(x[0] for x in self.fallbacks)
+            sorted(used), sorted(fallbacks)
         )
 
     def __str__(self):  # type: ignore
-        return ", ".join(sorted(x[0] for x in self.used))
+        used = {x[0] for x in self.used}
+        return ", ".join(sorted(used))
 
     def __bool__(self):
         return bool(self.used)
@@ -1022,16 +1025,18 @@ if __name__ == "__main__":
             )
 
         def test_repr(self):
-            self.e.raw("DEBUG", "fallback1")
-            self.e.raw("DEBUUUUG", "fallback2")
+            self.e.text("DEBUG", "fallback1")
+            self.e.bool("DEBUG", "fallback2")
+            self.e.raw("DEBUUUUG", "fallback3")
             self.assertEqual(
                 repr(self.e),
                 "<Environment: from source=['DEBUG'], from defaults=['DEBUUUUG']>",
             )
 
         def test_str(self):
-            self.e.raw("DEBUG", "fallback1")
-            self.e.raw("DEBUUUUG", "fallback2")
+            self.e.text("DEBUG", "fallback1")
+            self.e.bool("DEBUG", "fallback2")
+            self.e.raw("DEBUUUUG", "fallback3")
             self.assertEqual(str(self.e), "DEBUG")
 
         def test_iteration(self):

@@ -6,6 +6,7 @@ Change history for enviable
 * Bugfix: Resolved issue where by default it wasn't stripping leading/trailing whitespace from incoming strings
 * Feature: Added new convienience method ``env.one_of(key, default="", choices="", converter=None)`` for providing a constrainted list of options which are valid.
 * Misc: Updated the default converter for iterables to be a ``partial``
+* Bugfix: Resolved issue where ``str()`` and ``repr()`` for an ``Environment`` would leave duplicate values in if the same variable is searched for multiple times with different example/default values.
 
 0.1.0
 ^^^^^
