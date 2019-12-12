@@ -2,7 +2,7 @@ enviable
 ========
 
 :author: Keryn Knight
-:version: 0.1.0
+:version: 0.2.0
 
 A small module for wrapping over environment variables (pulled from ``os.environ``)
 which provides convenience methods to fetch and check various data types
