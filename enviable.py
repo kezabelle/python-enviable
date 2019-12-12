@@ -26,6 +26,7 @@ A short series of examples follow; see the README.rst file for a fuller explanat
     DEBUG = env.bool("DEBUG", "off")
     GIT_HASH = env.hex("COMMIT_REF", "11ff3fe8ccfa4bbd9c144f68b84c80f6")
     SERVER_EMAIL = env.email("DEFAULT_EMAIL", "a@b.com")
+    VALID_OPTION = env.one_of("VAR_NAME", "3", choices="1,2,3,4")
     DYANMIC_IMPORT = env.importable("MY_MODULE", "path.to.mymodule")
     LOCAL_FILE = env.filepath("ACCESS_KEYS", "/valid/path/to/keys.json")
     API_URL = env.web_address("API_URL", "https://example.com/")
@@ -66,6 +67,7 @@ from __future__ import absolute_import, unicode_literals
 import base64
 import binascii
 import decimal
+import functools
 import itertools
 import json
 import logging
@@ -557,8 +559,7 @@ class Environment(object):
 
         if converter is None:
 
-            def converter(value):
-                return self._tidy_raw_string(key=key, value=value)
+            converter = functools.partial(self._tidy_raw_string, key=key)
 
         else:
             if not callable(converter):
@@ -571,7 +572,7 @@ class Environment(object):
             split_by = csv_spaced
         else:
             split_by = csv
-        values = (converter(x) for x in value.split(split_by) if x)
+        values = (converter(value=x) for x in value.split(split_by) if x)
         return values
 
     def tuple(self, key, default="", converter=None):
@@ -605,8 +606,8 @@ class Environment(object):
 
         if key_converter is None:
 
-            def key_converter(value):
-                return self._tidy_raw_string(key=key, value=value)
+            if key_converter is None:
+                key_converter = functools.partial(self._tidy_raw_string, key=key)
 
         else:
             if not callable(key_converter):
@@ -615,8 +616,8 @@ class Environment(object):
                 )
         if value_converter is None:
 
-            def value_converter(value):
-                return self._tidy_raw_string(key=key, value=value)
+            if value_converter is None:
+                value_converter = functools.partial(self._tidy_raw_string, key=key)
 
         else:
             if not callable(value_converter):
@@ -625,7 +626,7 @@ class Environment(object):
                 )
 
         keys_values = (
-            (key_converter(key), value_converter(value))
+            (key_converter(value=key), value_converter(value=value))
             for key, delimiter, value in values_delimited
         )
         return dict(keys_values)
@@ -636,6 +637,16 @@ class Environment(object):
         return self.ensure.json(value)
 
     float = not_implemented
+
+    def one_of(self, key, default="", choices="", converter=None):
+        # type: (Text, Text, Text, Optional[Callable]) -> Any
+        if converter is None:
+            converter = functools.partial(self._tidy_raw_string, key=key)
+        options = tuple(sorted(self._tidy_iterable(key, choices, converter=converter)))
+        value = converter(self.text(key, default))
+        if value in options:
+            return value
+        raise EnvironmentCastError("Could not find value {0!r} in options {1!r}".format(value, options))
 
 
 env = Environment(source=os.environ)
@@ -997,6 +1008,17 @@ if __name__ == "__main__":
                     "b": decimal.Decimal("2"),
                     "c": decimal.Decimal("4"),
                 },
+            )
+
+        def test_one_of_many_choices(self):
+            self.assertEqual(
+                self.e.one_of(
+                    "INTEGER",
+                    "100",
+                    choices="123,456,3,200",
+                    converter=self.e.ensure.int,
+                ),
+                3,
             )
 
         def test_repr(self):
