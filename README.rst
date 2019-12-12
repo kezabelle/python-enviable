@@ -94,17 +94,21 @@ To confirm that a string looks like it might be an importable python thing::
 
     env.importable("VAR_NAME", "path.to.my.module") == "path.to.my.module"
 
-To make sure a string represents a readable file on disk::
+To make sure a string represents an existing, *readable* file on disk::
 
     env.filepath("VAR_NAME", "/path/to/my/valid_file.json") == "/path/to/my/valid_file.json"
 
-To make sure a string is desginated a directory which exists::
+To make sure a string is a directory which exists::
 
     env.directory("VAR_NAME", "/path/to/my") == "/path/to/my"
 
 To *vaguely* sanity-check URLs (must start with ``http://`` or ``https://`` or ``//`` or ``/...``)::
 
     env.web_address("VAR_NAME", "http://example.com/")
+
+To constrain a value to one of a few valid options (where ``choices`` is parsed the same way as `Iterables`_)::
+
+    env.one_of("VAR_NAME", "3", choices="1,2,3,4")
 
 and to go off-reservation, you can get JSON out, or the raw environment string::
 
@@ -153,7 +157,6 @@ and their python type is ignored::
     env.tuple("VAR_NAME", "[123, 4356, 235]") == ("123", "4356", "235")
     env.tuple("VAR_NAME", "(123, 4356, 235)") == ("123", "4356", "235")
     env.tuple("VAR_NAME", "{123, 4356, 235}") == ("123", "4356", "235")
-
 
 Casting on iterables
 ^^^^^^^^^^^^^^^^^^^^

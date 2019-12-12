@@ -3,7 +3,9 @@ Change history for enviable
 
 ?next?
 ^^^^^^
-* ...
+* Bugfix: Resolved issue where by default it wasn't stripping leading/trailing whitespace from incoming strings
+* Feature: Added new convienience method ``env.one_of(key, default="", choices="", converter=None)`` for providing a constrainted list of options which are valid.
+* Misc: Updated the default converter for iterables to be a ``partial``
 
 0.1.0
 ^^^^^
