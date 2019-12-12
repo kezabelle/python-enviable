@@ -195,6 +195,37 @@ To catch any *anticipated* error then, is to::
     except (EnvironmentCastError, EnvironmentDefaultError) as e:
         ...
 
+Tracking the requests
+---------------------
+
+Every access of an ``Environment`` (eg: the default ``env``) keeps an internal
+log of the key requested + whether or not it was found and used in the environment.
+
+These are available under ``env.used`` and ``env.fallbacks`` but may be accessed
+together by iterating over the ``Environment`` in question, where each iteration
+will yield a ``3-tuple`` of:
+
+- environment variable name requested
+- the ``default`` or *fallback* value
+- a ``bool`` of whether or not the environment variable was used or whether the fallback was. ``True`` if found in the environment, ``False`` if the fallback was used.
+
+For example, to output everything, you might do::
+
+    from enviable import env, Environment
+    import sys
+    env.int("TEST", "4")
+    myenv = Environment({"TESTING": "1"})
+    myenv.bool("TESTING", "0")
+    if __name__ == "__main__":
+        for env_var_name, env_var_example, was_read_from_env in env:
+            if was_read_from_env is True:
+                sys.stdout.write("{} was in the environment\n".format(env_var_name))
+            else:
+                sys.stdout.write("{} was NOT in the environment, used default value of {}\n".format(env_var_name, env_var_example))
+
+Note that in the above scenario, because ``env`` and ``myenv`` are different
+instances with their own individual tracking, the request for ``TESTING`` will
+not output, but ``TEST`` will.
 
 Running the tests
 -----------------
