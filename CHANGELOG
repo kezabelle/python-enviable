@@ -1,5 +1,10 @@
 Change history for enviable
 ---------------------------
+
+?next?
+^^^^^^
+* Updated type hints across the module to keep `mypy`_ happy, and me deeply unhappy.
+
 0.2.0
 ^^^^^^
 * Bugfix: Resolved issue where by default it wasn't stripping leading/trailing whitespace from incoming strings
@@ -10,3 +15,5 @@ Change history for enviable
 0.1.0
 ^^^^^
 * Initial export
+
+.. _mypy: https://mypy.readthedocs.io/en/latest/

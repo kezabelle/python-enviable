@@ -91,6 +91,7 @@ from typing import (
     FrozenSet,
     Mapping,
     Iterator,
+    Dict,
 )
 
 try:
@@ -546,7 +547,7 @@ class Environment(object):
         return self.ensure.web_address(value)
 
     def _tidy_iterable(self, key, value, converter=None):
-        # type: (Text, Text, Optional[Callable]) -> Iterable[Any]
+        # type: (Text, Text, Optional[Callable[..., Any]]) -> Iterable[Any]
         paren_l, paren_r = "(", ")"
         sq_l, sq_r = "[", "]"
         cb_l, cb_r = "{", "}"
@@ -583,31 +584,31 @@ class Environment(object):
         return values
 
     def tuple(self, key, default="", converter=None):
-        # type: (Text, Text, Optional[Callable]) -> Tuple[Any, ...]
+        # type: (Text, Text, Optional[Callable[..., Any]]) -> Tuple[Any, ...]
         return tuple(
             self._tidy_iterable(key, self.raw(key, default), converter=converter)
         )
 
     def list(self, key, default="", converter=None):
-        # type: (Text, Text, Optional[Callable]) -> List[Any]
+        # type: (Text, Text, Optional[Callable[..., Any]]) -> List[Any]
         return list(
             self._tidy_iterable(key, self.raw(key, default), converter=converter)
         )
 
     def set(self, key, default="", converter=None):
-        # type: (Text, Text, Optional[Callable]) -> Set[Any]
+        # type: (Text, Text, Optional[Callable[..., Any]]) -> Set[Any]
         return set(
             self._tidy_iterable(key, self.raw(key, default), converter=converter)
         )
 
     def frozenset(self, key, default="", converter=None):
-        # type: (Text, Text, Optional[Callable]) -> FrozenSet[Any]
+        # type: (Text, Text, Optional[Callable[..., Any]]) -> FrozenSet[Any]
         return frozenset(
             self._tidy_iterable(key, self.raw(key, default), converter=converter)
         )
 
     def dict(self, key, default="", key_converter=None, value_converter=None):
-        # type: (Text, Text, Optional[Callable], Optional[Callable]) -> dict
+        # type: (Text, Text, Optional[Callable[..., Any]], Optional[Callable[..., Any]]) -> Dict[Any, Any]
         values = self._tidy_iterable(key, self.raw(key, default), converter=None)
         values_delimited = (v.partition("=") for v in values)
 
@@ -646,7 +647,7 @@ class Environment(object):
     float = not_implemented
 
     def one_of(self, key, default="", choices="", converter=None):
-        # type: (Text, Text, Text, Optional[Callable]) -> Any
+        # type: (Text, Text, Text, Optional[Callable[..., Any]]) -> Any
         if converter is None:
             converter = functools.partial(self._tidy_raw_string, key=key)
         options = tuple(sorted(self._tidy_iterable(key, choices, converter=converter)))
