@@ -281,7 +281,7 @@ class EnvironmentCaster(object):
         return value
 
     def b64(self, value):
-        # type: (Union[bytes, str]) -> Union[bytes, str]
+        # type: (Union[bytes, Text]) -> Union[bytes, Text]
         try:
             base64.urlsafe_b64decode(value)
         except (TypeError, binascii.Error) as e:
@@ -512,7 +512,7 @@ class Environment(object):
         return self.ensure.hex(value)
 
     def b64(self, key, default=""):
-        # type: (Text, Text) -> Union[bytes, str]
+        # type: (Text, Text) -> Union[bytes, Text]
         value = self.text(key, default)
         return self.ensure.b64(value)
 
