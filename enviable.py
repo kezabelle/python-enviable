@@ -90,6 +90,7 @@ from typing import (
     List,
     FrozenSet,
     Mapping,
+    Iterator,
 )
 
 try:
@@ -104,7 +105,7 @@ try:
     CAN_PARSE_TEMPORAL = True
 except ImportError:
 
-    def temporal_failure(v):
+    def temporal_failure(v):  # type: ignore
         raise NotImplementedError(
             "I've not implemented parsing of dates/datetimes/times without depending on Django, sorry chum"
         )
@@ -123,6 +124,7 @@ VERSION = "0.2.0"
 
 
 def get_version():
+    # type: () -> Text
     return version
 
 
@@ -409,12 +411,14 @@ class Environment(object):
         return ", ".join(sorted(used))
 
     def __bool__(self):
+        # type: () -> bool
         return bool(self.used)
 
     def __iter__(self):
+        # type: () -> Iterator[Tuple[Text, Text, bool]]
         used = ((name, example, True) for name, example in self.used)
         fallbacks = ((name, example, False) for name, example in self.fallbacks)
-        all_together = tuple(itertools.chain(used, fallbacks))
+        all_together = list(itertools.chain(used, fallbacks))
         all_together = sorted(all_together, key=operator.itemgetter(0))
         return iter(all_together)
 
