@@ -666,15 +666,18 @@ if __name__ == "__main__":
         maxDiff = 1000
 
         def setUp(self):
+            # type: () -> None
             self.e = EnvironmentCaster()
 
         def test_int(self):
+            # type: () -> None
             good = (("000001", 1), ("2000", 2000))
             for input, output in good:
                 with self.subTest(input=input):
                     self.assertEqual(self.e.int(input), output)
 
         def test_int_errors(self):
+            # type: () -> None
             bad = (("0x1", 0), ("aaaaa", 0), ("1000.000", 0))
             for input, output in bad:
                 with self.subTest(input=input):
@@ -682,6 +685,7 @@ if __name__ == "__main__":
                         self.e.int(input)
 
         def test_bool_trues(self):
+            # type: () -> None
             good = (
                 "true",
                 "TRUE",
@@ -700,6 +704,7 @@ if __name__ == "__main__":
                     self.assertTrue(self.e.boolean(g))
 
         def test_bool_falses(self):
+            # type: () -> None
             good = (
                 "false",
                 "FALSE",
@@ -719,6 +724,7 @@ if __name__ == "__main__":
                     self.assertFalse(self.e.bool(g))
 
         def test_bool_errors(self):
+            # type: () -> None
             bad = ("woof", "goose", "111", "tru", "fals", "nope", "yeah")
             for i in bad:
                 with self.subTest(input=i):
@@ -726,6 +732,7 @@ if __name__ == "__main__":
                         self.e.boolean(i)
 
         def test_uuid_good(self):
+            # type: () -> None
             good = (
                 (
                     "1a83484205a041e2b02d02bd9fe7f382",
@@ -741,6 +748,7 @@ if __name__ == "__main__":
                     self.assertEqual(self.e.uuid(input), output)
 
         def test_uuid_bad(self):
+            # type: () -> None
             bad = ("test", "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa")
             for i in bad:
                 with self.subTest(input=input):
@@ -749,6 +757,7 @@ if __name__ == "__main__":
 
         @unittest.skipIf(CAN_PARSE_TEMPORAL is False, "Needs Django installed, sorry")
         def test_datetime_good(self):
+            # type: () -> None
             good = (
                 (
                     "2019-11-21 16:12:56.002344",
@@ -800,6 +809,7 @@ if __name__ == "__main__":
 
         @unittest.skipIf(CAN_PARSE_TEMPORAL is False, "Needs Django installed, sorry")
         def test_datetime_bad(self):
+            # type: () -> None
             bad = (
                 "2019-11-21 16:50:",
                 "2019-11-21 16:",
@@ -814,6 +824,7 @@ if __name__ == "__main__":
 
         @unittest.skipIf(CAN_PARSE_TEMPORAL is False, "Needs Django installed, sorry")
         def test_date_good(self):
+            # type: () -> None
             good = (
                 ("2019-11-21", dt.date(2019, 11, 21)),
                 ("2019-11-2", dt.date(2019, 11, 2)),
@@ -826,6 +837,7 @@ if __name__ == "__main__":
 
         @unittest.skipIf(CAN_PARSE_TEMPORAL is False, "Needs Django installed, sorry")
         def test_date_bad(self):
+            # type: () -> None
             bad = (
                 "2019-13-13" "2019-00-00",
                 "2019-0-0",
@@ -841,6 +853,7 @@ if __name__ == "__main__":
 
         @unittest.skipIf(CAN_PARSE_TEMPORAL is False, "Needs Django installed, sorry")
         def test_time_good(self):
+            # type: () -> None
             good = (
                 ("13:13:13.000123", dt.time(13, 13, 13, 123)),
                 ("13:13:13.123", dt.time(13, 13, 13, 123000)),
@@ -853,6 +866,7 @@ if __name__ == "__main__":
 
         @unittest.skipIf(CAN_PARSE_TEMPORAL is False, "Needs Django installed, sorry")
         def test_time_bad(self):
+            # type: () -> None
             bad = ("13:", "13")
             for i in bad:
                 with self.subTest(input=i):
@@ -860,6 +874,7 @@ if __name__ == "__main__":
                         self.e.time(i)
 
         def test_email_bad(self):
+            # type: () -> None
             bad = ("no_at_symbol", "test@test@test", "a@", "@b", "@testing", "testing@")
             for i in bad:
                 with self.subTest(input=i):
@@ -867,6 +882,7 @@ if __name__ == "__main__":
                         self.e.email(i)
 
         def test_hex_bad(self):
+            # type: () -> None
             bad = ("testing", "abcdef_", "e191903936cb42be99d007941511252g")
             for i in bad:
                 with self.subTest(input=i):
@@ -874,15 +890,18 @@ if __name__ == "__main__":
                         self.e.hex(i)
 
         def test_base64_good(self):
+            # type: () -> None
             good = b"d29vZg=="
             self.assertEqual(self.e.b64(good), good)
 
         def test_base64_bad(self):
+            # type: () -> None
             bad = b"d29vZg="
             with self.assertRaises(EnvironmentCastError):
                 self.e.b64(bad)
 
         def test_importable_bad(self):
+            # type: () -> None
             bad = (".relative.import", "ends.with.", "this.looks.ok-ish.right")
             for i in bad:
                 with self.subTest(input=i):
@@ -890,11 +909,13 @@ if __name__ == "__main__":
                         self.e.importable(i)
 
         def test_filepath_good(self):
+            # type: () -> None
             here = os.path.dirname(os.path.abspath(__file__))
             path = os.path.join(here, "enviable.py")
             self.assertEqual(self.e.filepath(path), path)
 
         def test_filepath_bad(self):
+            # type: () -> None
             here = os.path.dirname(os.path.abspath(__file__))
             bad = (os.path.join(here, "non-existant", "thing_goes_here"),)
             for i in bad:
@@ -903,10 +924,12 @@ if __name__ == "__main__":
                         self.e.filepath(i)
 
         def test_directory_good(self):
+            # type: () -> None
             here = os.path.dirname(os.path.abspath(__file__))
             self.assertEqual(self.e.directory(here), here)
 
         def test_directory_bad(self):
+            # type: () -> None
             here = os.path.dirname(os.path.abspath(__file__))
             bad = (os.path.join(here, "non-existant", "thing_goes_here"),)
             for i in bad:
@@ -915,6 +938,7 @@ if __name__ == "__main__":
                         self.e.directory(i)
 
         def test_web_address_good(self):
+            # type: () -> None
             good = (
                 "https://example.com/path",
                 "http://example.com/path",
@@ -926,6 +950,7 @@ if __name__ == "__main__":
                     self.assertEqual(self.e.web_address(input), input)
 
         def test_web_address_bad(self):
+            # type: () -> None
             bad = (
                 "httpx://example.com/path",
                 "http//example.com/path",
@@ -939,6 +964,7 @@ if __name__ == "__main__":
                         self.e.web_address(input)
 
         def test_decimal_bad(self):
+            # type: () -> None
             bad = (
                 "httpx://example.com/path",
                 "http//example.com/path",
@@ -952,6 +978,7 @@ if __name__ == "__main__":
 
     class TestBasicEnviron(unittest.TestCase):
         def setUp(self):
+            # type: () -> None
             self.e = Environment(
                 {
                     "DEBUG": "on",
@@ -968,16 +995,20 @@ if __name__ == "__main__":
             )
 
         def test_int(self):
+            # type: () -> None
             self.assertEqual(self.e.int("INTEGER", "3"), 3)
 
         def test_b64(self):
+            # type: () -> None
             self.assertEqual(self.e.b64("BASE_64_ENCODED", "3"), "d29vZg==")
 
         def test_bool(self):
+            # type: () -> None
             self.assertFalse(self.e.boolean("NOT_DEBUG", "unused"))
             self.assertTrue(self.e.boolean("DEBUG", "unused"))
 
         def test_uuid(self):
+            # type: () -> None
             output = uuid.UUID("ba7bbd90b0d842de9992513268d10f45")
             for x in ("UUID_HYPHENED", "UUID_UNHYPHENED"):
                 with self.subTest(var=x):
@@ -986,23 +1017,27 @@ if __name__ == "__main__":
                     )
 
         def test_tuple_of_ints(self):
+            # type: () -> None
             self.assertEqual(
                 self.e.tuple("CSV_INTS", ",", self.e.ensure.int), (123, 4356, 235)
             )
             self.assertEqual(self.e.tuple("CSV_INTS2", ",", self.e.ensure.int), ())
 
         def test_set_of_bools(self):
+            # type: () -> None
             self.assertEqual(
                 self.e.set("CSV_BOOLS", ",", self.e.ensure.bool), {False, True}
             )
 
         def test_list_of_importables(self):
+            # type: () -> None
             self.assertEqual(
                 self.e.list("IMPORTABLES", ",", self.e.ensure.importable),
                 ["not_a_dotted_path", "a.dotted.path"],
             )
 
         def test_dict_of_numbers(self):
+            # type: () -> None
             self.assertEqual(
                 self.e.dict(
                     "DICTY",
@@ -1018,6 +1053,7 @@ if __name__ == "__main__":
             )
 
         def test_one_of_many_choices(self):
+            # type: () -> None
             self.assertEqual(
                 self.e.one_of(
                     "INTEGER",
@@ -1029,6 +1065,7 @@ if __name__ == "__main__":
             )
 
         def test_repr(self):
+            # type: () -> None
             self.e.text("DEBUG", "fallback1")
             self.e.bool("DEBUG", "fallback2")
             self.e.raw("DEBUUUUG", "fallback3")
@@ -1038,12 +1075,14 @@ if __name__ == "__main__":
             )
 
         def test_str(self):
+            # type: () -> None
             self.e.text("DEBUG", "fallback1")
             self.e.bool("DEBUG", "fallback2")
             self.e.raw("DEBUUUUG", "fallback3")
             self.assertEqual(str(self.e), "DEBUG")
 
         def test_iteration(self):
+            # type: () -> None
             self.e.raw("DEBUG", "fallback1")
             for x in range(3):
                 self.e.raw("DEBUUUUG", "fallback2")
