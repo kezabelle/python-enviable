@@ -317,7 +317,7 @@ class EnvironmentCaster(object):
                     )
             # py2, slower...
             else:
-                if not re.match(tokenize.Name, part): # type: ignore
+                if not re.match(tokenize.Name, part):  # type: ignore
                     raise EnvironmentCastError(
                         "Invalid importable path component {0!r} in {1!r}".format(
                             part, value
@@ -653,7 +653,9 @@ class Environment(object):
         value = converter(self.text(key, default))
         if value in options:
             return value
-        raise EnvironmentCastError("Could not find value {0!r} in options {1!r}".format(value, options))
+        raise EnvironmentCastError(
+            "Could not find value {0!r} in options {1!r}".format(value, options)
+        )
 
 
 env = Environment(source=os.environ)
