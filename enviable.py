@@ -77,7 +77,7 @@ import re
 import string
 import tokenize
 import uuid
-import datetime
+import datetime as dt
 from typing import (
     Text,
     Union,
@@ -200,13 +200,13 @@ class EnvironmentCaster(object):
             )
 
     def datetime(self, value):
-        # type: (Text) -> datetime.datetime
-        parsed_value = parse_datetime(value)  # type: Optional[datetime.datetime]
+        # type: (Text) -> dt.datetime
+        parsed_value = parse_datetime(value)  # type: Optional[dt.datetime]
         if parsed_value is not None:
             return parsed_value
         del parsed_value
         try:
-            return datetime.datetime.strptime(value, "%Y-%m-%d")
+            return dt.datetime.strptime(value, "%Y-%m-%d")
         except ValueError as e:
             raise EnvironmentCastError(
                 "Cannot create datetime from unrecognised value {0!r}, {1!s}".format(
@@ -215,9 +215,9 @@ class EnvironmentCaster(object):
             )
 
     def date(self, value):
-        # type: (Text) -> datetime.date
+        # type: (Text) -> dt.date
         try:
-            parsed_value = parse_date(value)  # type: Optional[datetime.date]
+            parsed_value = parse_date(value)  # type: Optional[dt.date]
         except ValueError as e:
             raise EnvironmentCastError(
                 "Cannot create date from unrecognised value {0!r}, {1!s}".format(
@@ -231,8 +231,8 @@ class EnvironmentCaster(object):
         )
 
     def time(self, value):
-        # type: (Text) -> datetime.time
-        parsed_value = parse_time(value)  # type: Optional[datetime.time]
+        # type: (Text) -> dt.time
+        parsed_value = parse_time(value)  # type: Optional[dt.time]
         if parsed_value is not None:
             return parsed_value
         raise EnvironmentCastError(
@@ -487,17 +487,17 @@ class Environment(object):
         return self.ensure.uuid(value)
 
     def datetime(self, key, default=""):
-        # type: (Text, Text) -> datetime.datetime
+        # type: (Text, Text) -> dt.datetime
         value = self.text(key, default)
         return self.ensure.datetime(value)
 
     def date(self, key, default=""):
-        # type: (Text, Text) -> datetime.date
+        # type: (Text, Text) -> dt.date
         value = self.text(key, default)
         return self.ensure.date(value)
 
     def time(self, key, default=""):
-        # type: (Text, Text) -> datetime.time
+        # type: (Text, Text) -> dt.time
         value = self.text(key, default)
         return self.ensure.time(value)
 
@@ -748,23 +748,23 @@ if __name__ == "__main__":
             good = (
                 (
                     "2019-11-21 16:12:56.002344",
-                    datetime.datetime(2019, 11, 21, 16, 12, 56, 2344),
+                    dt.datetime(2019, 11, 21, 16, 12, 56, 2344),
                 ),
                 (
                     "2019-11-21T16:12:56.002344",
-                    datetime.datetime(2019, 11, 21, 16, 12, 56, 2344),
+                    dt.datetime(2019, 11, 21, 16, 12, 56, 2344),
                 ),
                 (
                     "2019-11-21 16:12:56.002344Z",
-                    datetime.datetime(2019, 11, 21, 16, 12, 56, 2344, tzinfo=utc),
+                    dt.datetime(2019, 11, 21, 16, 12, 56, 2344, tzinfo=utc),
                 ),
                 (
                     "2019-11-21T16:12:56.002344Z",
-                    datetime.datetime(2019, 11, 21, 16, 12, 56, 2344, tzinfo=utc),
+                    dt.datetime(2019, 11, 21, 16, 12, 56, 2344, tzinfo=utc),
                 ),
                 (
                     "2019-11-21 16:12:56.002344+20:00",
-                    datetime.datetime(
+                    dt.datetime(
                         2019,
                         11,
                         21,
@@ -772,12 +772,12 @@ if __name__ == "__main__":
                         12,
                         56,
                         2344,
-                        tzinfo=datetime.timezone(datetime.timedelta(0, 72000), "+2000"),
+                        tzinfo=dt.timezone(dt.timedelta(0, 72000), "+2000"),
                     ),
                 ),
                 (
                     "2019-11-21T16:12:56.002344+20:00",
-                    datetime.datetime(
+                    dt.datetime(
                         2019,
                         11,
                         21,
@@ -785,10 +785,10 @@ if __name__ == "__main__":
                         12,
                         56,
                         2344,
-                        tzinfo=datetime.timezone(datetime.timedelta(0, 72000), "+2000"),
+                        tzinfo=dt.timezone(dt.timedelta(0, 72000), "+2000"),
                     ),
                 ),
-                ("2019-11-21", datetime.datetime(2019, 11, 21, 0, 0)),
+                ("2019-11-21", dt.datetime(2019, 11, 21, 0, 0)),
             )
             for input, output in good:
                 with self.subTest(input=input):
@@ -811,10 +811,10 @@ if __name__ == "__main__":
         @unittest.skipIf(CAN_PARSE_TEMPORAL is False, "Needs Django installed, sorry")
         def test_date_good(self):
             good = (
-                ("2019-11-21", datetime.date(2019, 11, 21)),
-                ("2019-11-2", datetime.date(2019, 11, 2)),
-                ("2019-03-2", datetime.date(2019, 3, 2)),
-                ("2019-3-2", datetime.date(2019, 3, 2)),
+                ("2019-11-21", dt.date(2019, 11, 21)),
+                ("2019-11-2", dt.date(2019, 11, 2)),
+                ("2019-03-2", dt.date(2019, 3, 2)),
+                ("2019-3-2", dt.date(2019, 3, 2)),
             )
             for input, output in good:
                 with self.subTest(input=input):
@@ -838,10 +838,10 @@ if __name__ == "__main__":
         @unittest.skipIf(CAN_PARSE_TEMPORAL is False, "Needs Django installed, sorry")
         def test_time_good(self):
             good = (
-                ("13:13:13.000123", datetime.time(13, 13, 13, 123)),
-                ("13:13:13.123", datetime.time(13, 13, 13, 123000)),
-                ("13:13:13", datetime.time(13, 13, 13)),
-                ("13:13", datetime.time(13, 13)),
+                ("13:13:13.000123", dt.time(13, 13, 13, 123)),
+                ("13:13:13.123", dt.time(13, 13, 13, 123000)),
+                ("13:13:13", dt.time(13, 13, 13)),
+                ("13:13", dt.time(13, 13)),
             )
             for input, output in good:
                 with self.subTest(input=input):
