@@ -668,6 +668,7 @@ env = Environment(source=os.environ)
 
 if __name__ == "__main__":
     import unittest
+    import sys
 
     class TestBasicCasting(unittest.TestCase):
         maxDiff = 1000
@@ -1103,5 +1104,29 @@ if __name__ == "__main__":
             # type: () -> None
             self.assertTrue("DEBUG" in self.e)
             self.assertFalse("DEBUG1" in self.e)
+
+    try:
+        from mypy import api as mypy
+    except ImportError:
+        sys.stdout.write("mypy <https://mypy.readthedocs.io/> not installed\n")
+        sys.stdout.write("skipped static type linting...\n\n")
+    else:
+        sys.stdout.write("mypy: installed, running...\n")
+        old_value = os.environ.get("MYPY_FORCE_COLOR", None)
+        if old_value is None:
+            os.environ["MYPY_FORCE_COLOR"] = "1"
+            sys.stdout.write("mypy: forcing coloured output...\n")
+        here = os.path.dirname(os.path.abspath(__file__))
+        path = os.path.join(here, "enviable.py")
+        report, errors, exit_code = mypy.run(["--strict", "--ignore-missing-imports", path])
+        if old_value is not None:
+            os.environ["MYPY_FORCE_COLOR"] = old_value
+
+        if report:
+            sys.stdout.write(report)
+        if errors:
+            sys.stderr.write(errors)
+
+        sys.stdout.write("mypy: run is complete...\n\n")
 
     unittest.main(verbosity=2)
