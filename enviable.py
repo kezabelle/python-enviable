@@ -423,6 +423,10 @@ class Environment(object):
         all_together = sorted(all_together, key=operator.itemgetter(0))
         return iter(all_together)
 
+    def __contains__(self, item):
+        # type: (Text) -> bool
+        return item in self.source
+
     def raw(self, key, default=""):
         # type: (Text, Text) -> Text
         if not isinstance(default, string_types):
@@ -1094,5 +1098,10 @@ if __name__ == "__main__":
                     tuple(self.e),
                     (("DEBUG", "fallback1", True), ("DEBUUUUG", "fallback2", False)),
                 )
+
+        def test_contains(self):
+            # type: () -> None
+            self.assertTrue("DEBUG" in self.e)
+            self.assertFalse("DEBUG1" in self.e)
 
     unittest.main(verbosity=2)
