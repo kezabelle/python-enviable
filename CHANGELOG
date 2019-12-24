@@ -3,7 +3,9 @@ Change history for enviable
 
 ?next?
 ^^^^^^
-* Updated type hints across the module to keep `mypy`_ happy, and me deeply unhappy.
+* Feature: Testing if a key exists in the environment can now be done using ``"KEYNAME" in env``
+* Misc: Updated type hints across the module to keep `mypy`_ happy, and me deeply unhappy.
+* Misc: Before executing tests when doing ``python -m enviable``, try and run `mypy`_
 
 0.2.0
 ^^^^^^

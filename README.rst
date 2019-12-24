@@ -195,6 +195,18 @@ To catch any *anticipated* error then, is to::
     except (EnvironmentCastError, EnvironmentDefaultError) as e:
         ...
 
+Checking for existence
+----------------------
+
+To find out if an environment variable is set, *regardless of it's value*, you can
+use normal ``in`` testing::
+
+    if "MY_KEY" in env:
+        do_something_special()
+
+which allows you to change behaviour based on seeing certain variables in the
+running environment.
+
 Tracking the requests
 ---------------------
 
@@ -230,11 +242,13 @@ not output, but ``TEST`` will.
 Running the tests
 -----------------
 
-Given a copy of the file ``enviable.py`` you ought to be able to do::
+Given a copy of the file ``enviable.py`` you ought to be able to do either of the following::
 
-    python enviable.py
+    $ python enviable.py
+    $ python -m enviable
 
-and see the output of the various tests I've bothered with.
+and see the output of the various tests I've bothered with. If mypy is installed,
+it will also type-check the file.
 
 TODO
 ----
