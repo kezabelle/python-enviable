@@ -1118,7 +1118,9 @@ if __name__ == "__main__":
             sys.stdout.write("mypy: forcing coloured output...\n")
         here = os.path.dirname(os.path.abspath(__file__))
         path = os.path.join(here, "enviable.py")
-        report, errors, exit_code = mypy.run(["--strict", "--ignore-missing-imports", path])
+        report, errors, exit_code = mypy.run(
+            ["--strict", "--ignore-missing-imports", path]
+        )
         if old_value is not None:
             os.environ["MYPY_FORCE_COLOR"] = old_value
 
