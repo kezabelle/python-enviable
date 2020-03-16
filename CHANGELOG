@@ -1,7 +1,6 @@
 Change history for enviable
 ---------------------------
-
-?next?
+0.2.1
 ^^^^^^
 * Feature: Testing if a key exists in the environment can now be done using ``"KEYNAME" in env``
 * Bugfix: using ``env.one_of(key, default="", choices="")`` without providing a custom converter no longer throws a ``TypeError``
