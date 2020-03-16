@@ -4,6 +4,7 @@ Change history for enviable
 ?next?
 ^^^^^^
 * Feature: Testing if a key exists in the environment can now be done using ``"KEYNAME" in env``
+* Bugfix: using ``env.one_of(key, default="", choices="")`` without providing a custom converter no longer throws a ``TypeError``
 * Misc: Updated type hints across the module to keep `mypy`_ happy, and me deeply unhappy.
 * Misc: Before executing tests when doing ``python -m enviable``, try and run `mypy`_
 
