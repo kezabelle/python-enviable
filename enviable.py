@@ -78,21 +78,25 @@ import string
 import tokenize
 import uuid
 import datetime as dt
-from typing import (
-    Text,
-    Union,
-    Set,
-    Optional,
-    Callable,
-    Iterable,
-    Any,
-    Tuple,
-    List,
-    FrozenSet,
-    Mapping,
-    Iterator,
-    Dict,
-)
+
+try:
+    from typing import (
+        Text,
+        Union,
+        Set,
+        Optional,
+        Callable,
+        Iterable,
+        Any,
+        Tuple,
+        List,
+        FrozenSet,
+        Mapping,
+        Iterator,
+        Dict,
+    )
+except ImportError:
+    pass
 
 try:
     from six import string_types
