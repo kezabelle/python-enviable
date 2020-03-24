@@ -1,5 +1,10 @@
 Change history for enviable
 ---------------------------
+
+?next?
+^^^^^^
+* Bugfix: the ``typing`` module is no longer a hard-dependency, because whilst you have it on py3, you only *might* have it in a py2 environment. See `GitHub issue 2`_
+
 0.2.1
 ^^^^^^
 * Feature: Testing if a key exists in the environment can now be done using ``"KEYNAME" in env``
@@ -19,3 +24,4 @@ Change history for enviable
 * Initial export
 
 .. _mypy: https://mypy.readthedocs.io/en/latest/
+.. _GitHub issue 2: https://github.com/kezabelle/python-enviable/issues/2
