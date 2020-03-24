@@ -30,7 +30,7 @@ KEYWORDS = (
 
 setup(
     name="enviable",
-    version="0.2.1",
+    version="0.2.2",
     author="Keryn Knight",
     author_email="python-enviable@kerynknight.com",
     maintainer="Keryn Knight",
