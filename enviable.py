@@ -75,9 +75,11 @@ import operator
 import os
 import re
 import string
+import sys
 import tokenize
 import uuid
 import datetime as dt
+from io import TextIOBase
 
 try:
     from typing import (
@@ -463,6 +465,29 @@ class Environment(object):
     def __contains__(self, item):
         # type: (Text) -> bool
         return item in self.source
+
+    def print(self, format="export {key!s}={value!s}", stream=None):
+        # type: (Text, TextIOBase) -> None
+        stream = stream or sys.stdout
+        try:
+            from django.views.debug import SafeExceptionReporterFilter
+
+            HIDDEN_SETTINGS = SafeExceptionReporterFilter.hidden_settings
+            CLEANSED_SUBSTITUTE = SafeExceptionReporterFilter.cleansed_substitute
+        except ImportError:
+            try:
+                from django.views.debug import HIDDEN_SETTINGS, CLEANSED_SUBSTITUTE
+            except ImportError:
+                HIDDEN_SETTINGS = re.compile(
+                    "API|TOKEN|KEY|SECRET|PASS|SIGNATURE", flags=re.I
+                )
+                CLEANSED_SUBSTITUTE = "********************"
+        if not format.endswith(os.linesep):
+            format = format + os.linesep
+        for env_var, env_example, read_from_env in self:
+            if HIDDEN_SETTINGS.search(env_var):
+                env_example = CLEANSED_SUBSTITUTE
+            stream.write(format.format(key=env_var, value=env_example))
 
     def raw(self, key, default=""):
         # type: (Text, Text) -> Text
