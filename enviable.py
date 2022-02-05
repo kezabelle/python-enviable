@@ -108,18 +108,51 @@ try:
     from django.utils.timezone import utc
 
     CAN_PARSE_TEMPORAL = True
+    HAS_DJANGO = CAN_PARSE_TEMPORAL_DJANGO = True
 except ImportError:
+    HAS_DJANGO = CAN_PARSE_TEMPORAL_DJANGO = False
+    # Python 3.7+ can at least parse a subset of ISO 8601 strings, like:
+    # YYYY-MM-DD[*HH[:MM[:SS[.fff[fff]]]][+HH:MM[:SS[.ffffff]]]]
+    # YYYY-MM-DD
+    # HH[:MM[:SS[.fff[fff]]]][+HH:MM[:SS[.ffffff]]]
+    try:
+        dt.datetime.fromisoformat
+        dt.date.fromisoformat
+        dt.time.fromisoformat
+    except AttributeError:
 
-    def temporal_failure(v):  # type: ignore
-        raise NotImplementedError(
-            "I've not implemented parsing of dates/datetimes/times without depending on Django, sorry chum"
-        )
+        def temporal_failure(v):  # type: ignore
+            raise NotImplementedError(
+                "I've not implemented parsing of dates/datetimes/times without depending on Django or Python 3.7+, sorry chum"
+            )
 
-    parse_date = temporal_failure
-    parse_datetime = temporal_failure
-    parse_time = temporal_failure
-    utc = None
-    CAN_PARSE_TEMPORAL = False
+        parse_date = temporal_failure
+        parse_datetime = temporal_failure
+        parse_time = temporal_failure
+        utc = None
+        CAN_PARSE_TEMPORAL = False
+    else:
+
+        def temporal_parser(v, handler):
+            try:
+                return handler(v)
+            except ValueError:
+                # Return None so that the rest of the date/datetime/time casting
+                # can try and run. Emulate's Django's parser which returns None
+                # for invalid inputs ... for reasons.
+                return None
+
+        def parse_date(v):
+            return temporal_parser(v, dt.date.fromisoformat)
+
+        def parse_datetime(v):
+            return temporal_parser(v, dt.datetime.fromisoformat)
+
+        def parse_time(v):
+            return temporal_parser(v, dt.time.fromisoformat)
+
+        utc = dt.timezone.utc
+        CAN_PARSE_TEMPORAL = True
 
 
 __version_info__ = "0.2.2"
@@ -767,7 +800,9 @@ if __name__ == "__main__":
                     with self.assertRaises(EnvironmentCastError):
                         self.e.uuid(i)
 
-        @unittest.skipIf(CAN_PARSE_TEMPORAL is False, "Needs Django installed, sorry")
+        @unittest.skipIf(
+            CAN_PARSE_TEMPORAL is False, "Needs Django or Python 3.7+ installed, sorry"
+        )
         def test_datetime_good(self):
             # type: () -> None
             good = (
@@ -779,6 +814,43 @@ if __name__ == "__main__":
                     "2019-11-21T16:12:56.002344",
                     dt.datetime(2019, 11, 21, 16, 12, 56, 2344),
                 ),
+                (
+                    "2019-11-21 16:12:56.002344+20:00",
+                    dt.datetime(
+                        2019,
+                        11,
+                        21,
+                        16,
+                        12,
+                        56,
+                        2344,
+                        tzinfo=dt.timezone(dt.timedelta(0, 72000), "+2000"),
+                    ),
+                ),
+                (
+                    "2019-11-21T16:12:56.002344+20:00",
+                    dt.datetime(
+                        2019,
+                        11,
+                        21,
+                        16,
+                        12,
+                        56,
+                        2344,
+                        tzinfo=dt.timezone(dt.timedelta(0, 72000), "+2000"),
+                    ),
+                ),
+                ("2019-11-21", dt.datetime(2019, 11, 21, 0, 0)),
+            )
+            for input, output in good:
+                with self.subTest(input=input):
+                    self.assertEqual(self.e.datetime(input), output)
+
+        @unittest.skipIf(
+            CAN_PARSE_TEMPORAL_DJANGO is False, "Needs Django installed, sorry"
+        )
+        def test_datetime_good_django_specifics(self):
+            good = (
                 (
                     "2019-11-21 16:12:56.002344Z",
                     dt.datetime(2019, 11, 21, 16, 12, 56, 2344, tzinfo=utc),
@@ -825,7 +897,6 @@ if __name__ == "__main__":
             bad = (
                 "2019-11-21 16:50:",
                 "2019-11-21 16:",
-                "2019-11-21 16",
                 "2019-11-21 1",
                 "2019-11-21 ",
             )
@@ -834,11 +905,33 @@ if __name__ == "__main__":
                     with self.assertRaises(EnvironmentCastError):
                         self.e.datetime(i)
 
-        @unittest.skipIf(CAN_PARSE_TEMPORAL is False, "Needs Django installed, sorry")
+        @unittest.skipIf(
+            CAN_PARSE_TEMPORAL_DJANGO is False, "Needs Django installed, sorry"
+        )
+        def test_datetime_bad_django_specifics(self):
+            # type: () -> None
+            bad = (
+                # I think this is irrelevant after django/django@f35ab74752adb37138112657c1bc8b91f50e799b
+                # "2019-11-21 16",
+            )
+            for i in bad:
+                with self.subTest(input=i):
+                    with self.assertRaises(EnvironmentCastError):
+                        self.e.datetime(i)
+
+        @unittest.skipIf(
+            CAN_PARSE_TEMPORAL is False, "Needs Django or Python 3.7+ installed, sorry"
+        )
         def test_date_good(self):
             # type: () -> None
+            self.assertEqual(self.e.date("2019-11-21"), dt.date(2019, 11, 21))
+
+        @unittest.skipIf(
+            CAN_PARSE_TEMPORAL_DJANGO is False, "Needs Django installed, sorry"
+        )
+        def test_date_good_django_specifics(self):
+            # type: () -> None
             good = (
-                ("2019-11-21", dt.date(2019, 11, 21)),
                 ("2019-11-2", dt.date(2019, 11, 2)),
                 ("2019-03-2", dt.date(2019, 3, 2)),
                 ("2019-3-2", dt.date(2019, 3, 2)),
@@ -877,10 +970,21 @@ if __name__ == "__main__":
                 with self.subTest(input=input):
                     self.assertEqual(self.e.time(input), output)
 
-        @unittest.skipIf(CAN_PARSE_TEMPORAL is False, "Needs Django installed, sorry")
+        @unittest.skipIf(
+            CAN_PARSE_TEMPORAL is False, "Needs Django or Python 3.7+ installed, sorry"
+        )
         def test_time_bad(self):
             # type: () -> None
-            bad = ("13:", "13")
+            bad = ("13:",)
+            for i in bad:
+                with self.subTest(input=i):
+                    with self.assertRaises(EnvironmentCastError):
+                        self.e.time(i)
+
+        @unittest.skipIf(CAN_PARSE_TEMPORAL is False, "Needs Django installed, sorry")
+        def test_time_bad_django_specifics(self):
+            # type: () -> None
+            bad = ("13:",)
             for i in bad:
                 with self.subTest(input=i):
                     with self.assertRaises(EnvironmentCastError):
