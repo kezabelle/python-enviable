@@ -1209,7 +1209,12 @@ if __name__ == "__main__":
         def test_one_of_many_choices_without_converter(self):
             # type: () -> None
             self.assertEqual(
-                self.e.one_of("INTEGER", "100", choices="123,456,3,200",), "3",
+                self.e.one_of(
+                    "INTEGER",
+                    "100",
+                    choices="123,456,3,200",
+                ),
+                "3",
             )
 
         def test_repr(self):
