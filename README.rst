@@ -6,11 +6,26 @@ enviable
 
 A small module for wrapping over environment variables (pulled from ``os.environ``)
 which provides convenience methods to fetch and check various data types
-(including iterables) in what I'd charitably hope is a sensible way.
+(including iterables) in what I'd charitably hope is a semi-sensible way.
 
-Explicitly doesn't attempt to read from any ``.env`` or ``.envrc`` file, because that
-doesn't describe valid examples or which things may/should be set into the
-environment. It becomes an absolute pot-luck.
+
+Rationale
+---------
+
+I've worked on enough projects of long lifespan that ultimately everyone ends up with
+their own environment variables configured, invariably differently and often out-of-date
+or stale in unique ways, depending on when they arrive and the maturity and state of
+the project at the time.
+
+This is an attempt to resolve that by having a single configuration, read from env vars,
+and capable of dumping an env file full of valid example values which should be enough
+to run safely locally.
+
+Explicitly *doesn't* attempt to read from any ``.env`` or ``.envrc`` file, because that
+doesn't describe valid examples or *which* things may/should be set into the
+environment. It becomes an absolute pot-luck. It also means you end up carrying around
+stale environment variables because some change or other wasn't mentioned/documented
+and so env var ``MY_COOL_ENV`` isn't used any more.
 
 Tracks requested environment variables and their default/fallback/example values, and
 whether or not the fallback was used. Never tracks the actual environment value.
@@ -118,7 +133,7 @@ and to go off-reservation, you can get JSON out, or the raw environment string::
 Temporal values (datetimes, dates, times)
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-If you have `Django`_ installed (because that's my main use case and I'm lazy)
+If you have `Django`_ (or Python **3.7+**) installed (because that's my main use case and I'm lazy)
 you can also get datetimes if you provide a value in ISO 8601 format::
 
     env.datetime("VAR_NAME", "2019-11-21 16:12:56.002344")
@@ -238,6 +253,37 @@ For example, to output everything, you might do::
 Note that in the above scenario, because ``env`` and ``myenv`` are different
 instances with their own individual tracking, the request for ``TESTING`` will
 not output, but ``TEST`` will.
+
+Generating an env file
+----------------------
+
+To avoid carrying around stale environment variables on projects of longevity, the ``Environment``
+provides a self-documenting mechanism to output all of the environment variables and
+example values to stdout (or any stream), so you can just pipe to a file and you've got a usable env, give or
+take adjusting the values for your machine::
+
+    # my_cool_settings.py
+    from enviable import env
+    env.int("TEST", "4")
+    env.hex("MY_COOL_VAR", "ABCDEF24")
+    if __name__ == "__main__":
+        env.print()
+
+the above will print to stdout when you call ``python -m my_cool_settings`` like so::
+
+    export MY_COOL_VAR='ABCDEF24'
+    export TEST='4'
+
+You can adjust the output to say, be `.env` file compatible like so::
+
+    env.print("{key!s}='{value!s}'")
+
+which would instead output::
+
+    MY_COOL_VAR='ABCDEF24'
+    TEST='4'
+
+Only ``key`` and ``value`` format-kwargs are provided to the output template.
 
 Running the tests
 -----------------

@@ -466,7 +466,7 @@ class Environment(object):
         # type: (Text) -> bool
         return item in self.source
 
-    def print(self, format="export {key!s}={value!s}", stream=None):
+    def print(self, format="export {key!s}='{value!s}'", stream=None):
         # type: (Text, TextIOBase) -> None
         stream = stream or sys.stdout
         try:
