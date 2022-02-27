@@ -80,6 +80,7 @@ import tokenize
 import uuid
 import datetime as dt
 from io import TextIOBase
+from urllib.parse import urlparse, parse_qsl, unquote
 
 try:
     from typing import (
@@ -203,6 +204,23 @@ class EnvironmentCaster(object):
     """
 
     __slots__ = ()
+
+    def text(self, value):
+        # type: (Text) -> Text
+        sq = "'"
+        dq = '"'
+        if len(value) <= 1:
+            return value
+        elif value[0] == sq and value[-1] == sq:
+            value = value[1:-1]
+        elif value[0] == dq and value[-1] == dq:
+            value = value[1:-1]
+
+        if value.lstrip() != value:
+            value = value.lstrip()
+        elif value.rstrip() != value:
+            value = value.rstrip()
+        return value
 
     def int(self, value):
         # type: (Text) -> int
@@ -507,25 +525,10 @@ class Environment(object):
 
     def _tidy_raw_string(self, key, value):
         # type: (Text, Text) -> Text
-        sq = "'"
-        dq = '"'
-        if len(value) <= 1:
-            return value
-        elif value[0] == sq and value[-1] == sq:
-            logger.debug("Stripped surrounding single-quotes from %s", key)
-            value = value[1:-1]
-        elif value[0] == dq and value[-1] == dq:
-            logger.debug("Stripped surrounding double-quotes from %s", key)
-            value = value[1:-1]
-
-        if value.lstrip() != value:
-            logger.warning("Whitespace exists at beginning of %s", key)
-            value = value.lstrip()
-        elif value.rstrip() != value:
-            logger.warning("Whitespace exists at end of %s", key)
-            value = value.rstrip()
-
-        return value
+        tidied = self.ensure.text(value)
+        if tidied != value:
+            logger.debug("Stripped surrounding quotes from %s", key)
+        return tidied
 
     def not_implemented(self, key, default=""):
         # type: (Text, Text) -> None
@@ -611,6 +614,104 @@ class Environment(object):
         # type: (Text, Text) -> Text
         value = self.text(key, default)
         return self.ensure.web_address(value)
+
+    def django_database_url(self, key="DATABASE_URL", default=""):
+        # type: (Text, Text) -> Dict[Text, Any]
+        aliases = {
+            "postgre": "postgres",
+            "postgresql": "postgres",
+            "psycopg2": "postgres",
+            "psql": "postgres",
+            "pgsql": "postgres",
+            "pg": "postgres",
+            "mariadb": "mysql",
+            "maria": "mysql",
+            "mysqlclient": "mysql",
+            "sqlite3": "sqlite",
+        }
+
+        builtin_scheme_map = {
+            "postgres": "django.db.backends.postgresql",
+            "mysql": "django.db.backends.mysql",
+            "sqlite": "django.db.backends.sqlite3",
+        }
+        global_options = {
+            "ATOMIC_REQUESTS": env.ensure.boolean,
+            "AUTOCOMMIT": env.ensure.boolean,
+            "CONN_MAX_AGE": env.ensure.int,
+            "TIME_ZONE": env.ensure.text,
+            "DISABLE_SERVER_SIDE_CURSORS": env.ensure.boolean,
+            "CHARSET": env.ensure.text,
+            "COLLATION": env.ensure.text,
+            "MIGRATE": env.ensure.boolean,
+            "TEMPLATE": env.ensure.text,
+        }
+        value = self.text(key, default)
+        result = urlparse(value)
+        # scheme, netloc, path, params, query, fragment = result
+        if result.scheme in builtin_scheme_map:
+            engine = builtin_scheme_map[result.scheme]
+        elif result.scheme in aliases:
+            result_scheme = aliases[result.scheme]
+            engine = builtin_scheme_map[result_scheme]
+        else:
+            # dotted path to selected engine.
+            engine = env.ensure.importable(result.scheme)
+
+        path = result.path.strip("/")
+        host, port = result._hostinfo
+        # It got parsed as the port part, so it's missing the colon prefix
+        if engine == "django.db.backends.sqlite3" and port == "memory:":
+            if result.path and result.path != "/":
+                raise EnvironmentCastError(
+                    f"Unexpected path ({result.path}) for an in-memory SQLite database"
+                )
+            path = ":memory:"
+            port = None
+            host = None
+
+        parsed_config = {
+            "ENGINE": engine,
+            "NAME": path,
+            "OPTIONS": {},
+        }
+        if result.username:
+            parsed_config["USER"] = unquote(self.ensure.text(result.username))
+        if result.password:
+            parsed_config["PASSWORD"] = unquote(self.ensure.text(result.password))
+        if host:
+            parsed_config["HOST"] = unquote(self.ensure.text(host))
+        if port:
+            parsed_config["PORT"] = env.ensure.int(unquote(self.ensure.text(port)))
+
+        # query string is both global options and OPTIONS, for compatibility
+        # with things like django-environ
+        if result.query:
+            for key, value in parse_qsl(result.query):
+                capkey = key.upper()
+                value = unquote(value)
+                if capkey in global_options:
+                    converter = global_options[capkey]
+                    parsed_config.update({capkey: converter(value)})
+                else:
+                    parsed_config["OPTIONS"].update({key: self.ensure.text(value)})
+
+        # if given a fragment, those are all global options.
+        if result.fragment:
+            for key, value in parse_qsl(result.fragment):
+                capkey = key.upper()
+                if capkey in parsed_config:
+                    raise EnvironmentCastError(
+                        f"fragment key ({key}) conflicts with previously set query-string key ({capkey})"
+                    )
+                value = unquote(value)
+                if capkey in global_options:
+                    converter = global_options[capkey]
+                    parsed_config.update({capkey: converter(value)})
+                else:
+                    parsed_config.update({key: self.ensure.text(value)})
+
+        return parsed_config
 
     def _tidy_iterable(self, key, value, converter=None):
         # type: (Text, Text, Optional[Callable[..., Any]]) -> Iterable[Any]
@@ -1248,6 +1349,60 @@ if __name__ == "__main__":
             # type: () -> None
             self.assertTrue("DEBUG" in self.e)
             self.assertFalse("DEBUG1" in self.e)
+
+        def test_database_url(self):
+            examples = (
+                (
+                    "sqlite:////tmp/my-tmp-sqlite.db",
+                    {
+                        "ENGINE": "django.db.backends.sqlite3",
+                        "NAME": "tmp/my-tmp-sqlite.db",
+                        "OPTIONS": {},
+                    },
+                ),
+                (
+                    "sqlite://:memory:",
+                    {
+                        "ENGINE": "django.db.backends.sqlite3",
+                        "NAME": ":memory:",
+                        "OPTIONS": {},
+                    },
+                ),
+                (
+                    "pg://user:p%40ss@localhost:9991/dbname?atomic_requests=1#AUTOCOMMIT=1",
+                    {
+                        "ATOMIC_REQUESTS": True,
+                        "AUTOCOMMIT": True,
+                        "ENGINE": "django.db.backends.postgresql",
+                        "HOST": "localhost",
+                        "PORT": 9991,
+                        "NAME": "dbname",
+                        "OPTIONS": {},
+                        "PASSWORD": "p@ss",
+                        "USER": "user",
+                    },
+                ),
+                (
+                    "maria://%F0%9F%98%80:%E3%81%81@localhost:22/test_db?init_command=SET%20sql_mode%3D%27STRICT_ALL_TABLES%27&read_default_file=%2Fpath%2Fto%2Ffile.cnf#test=lol",
+                    {
+                        "ENGINE": "django.db.backends.mysql",
+                        "HOST": "localhost",
+                        "PORT": 22,
+                        "NAME": "test_db",
+                        "OPTIONS": {
+                            "init_command": "SET sql_mode='STRICT_ALL_TABLES'",
+                            "read_default_file": "/path/to/file.cnf",
+                        },
+                        "PASSWORD": "ぁ",
+                        "USER": "😀",
+                        "test": "lol",
+                    },
+                ),
+            )
+            for url, output in examples:
+                with self.subTest(url=url):
+                    env = Environment({"DATABASE_URL": url})
+                    self.assertDictEqual(output, env.django_database_url())
 
     try:
         from mypy import api as mypy
