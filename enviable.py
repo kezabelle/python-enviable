@@ -206,20 +206,30 @@ class EnvironmentCaster(object):
     __slots__ = ()
 
     timedelta_re = re.compile(
-        r'(?P<days>[0-9]{1,})\s*(?:d|dys?|days?)'
-        r'|'
-        r'(?P<seconds>[0-9]{1,})\s*(?:s|secs?|seconds?)'
-        r'|'
-        r'(?P<microseconds>[0-9]{1,})\s*(?:us?|µs?|microsecs?|microseconds?)'
-        r'|'
-        r'(?P<milliseconds>[0-9]{1,})\s*(?:ms|millisecs?|milliseconds?)'
-        r'|'
-        r'(?P<minutes>[0-9]{1,})\s*(?:m|mins?|minutes?)'
-        r'|'
-        r'(?P<hours>[0-9]{1,})\s*(?:h|hrs?|hours?)'
-        r'|'
-        r'(?P<weeks>[0-9]{1,})\s*(?:w|wks?|weeks?)',
-        flags=re.UNICODE | re.IGNORECASE
+        r"(?P<days>-?[0-9]{1,})\s*(?:d|dys?|days?)"
+        r"|"
+        r"(?P<seconds>-?[0-9]{1,})\s*(?:s|secs?|seconds?)"
+        r"|"
+        r"(?P<microseconds>-?[0-9]{1,})\s*(?:us?|µs?|microsecs?|microseconds?)"
+        r"|"
+        r"(?P<milliseconds>-?[0-9]{1,})\s*(?:ms|millisecs?|milliseconds?)"
+        r"|"
+        r"(?P<minutes>-?[0-9]{1,})\s*(?:m|mins?|minutes?)"
+        r"|"
+        r"(?P<hours>-?[0-9]{1,})\s*(?:h|hrs?|hours?)"
+        r"|"
+        r"(?P<weeks>-?[0-9]{1,})\s*(?:w|wks?|weeks?)",
+        flags=re.UNICODE | re.IGNORECASE,
+    )
+    timedelta_str_re = re.compile(
+        r"(?:(?P<days>-?[0-9]{1,})\s*(?:d|dys?|days?),?\s*)?"
+        r"(?P<hours>[0-9]{1,})"
+        r":"
+        r"(?P<minutes>[0-9]{2})"
+        r":"
+        r"(?P<seconds>[0-9]{2})"
+        r"(?:\.(?P<microseconds>[0-9]{1,6}))?",
+        flags=re.UNICODE | re.IGNORECASE,
     )
 
     def text(self, value):
@@ -318,7 +328,6 @@ class EnvironmentCaster(object):
 
     def _just_timedelta(self, value):
         # type: (Text) -> dt.timedelta
-        # Looks like "1 week, 4 days" and isn't weeks=1, days=4
         kwargs = {
             "days": 0,
             "seconds": 0,
@@ -328,105 +337,17 @@ class EnvironmentCaster(object):
             "hours": 0,
             "weeks": 0,
         }
-        # without trailing 's'
-        kwarg_map = {k[:-1]: k for k in kwargs}
-        # looks like "1 week 4 days 3 minutes"
-        if "," not in value and ";" not in value:
-            if " " in value:
-                initial_parts = [part.strip() for part in value.split(" ") if part.strip()]
-                if len(initial_parts) % 2 != 0:
-                    raise EnvironmentCastError(
-                        "Unexpected trailing parts parsing string into timedelta"
-                    )
-                paired_parts = [
-                    "{} {},".format(numpart, namepart)
-                    for namepart, numpart in zip(initial_parts[1::2], initial_parts[0::2])
-                    if namepart.strip() in kwarg_map
-                ]
-                if len(paired_parts) != (len(initial_parts) // 2):
-                    raise EnvironmentCastError(
-                        "Unexpected change in length parsing string into timedelta"
-                    )
-                value = "".join(paired_parts)
-            else:
-                # Falling back to regular expressions for complex ones.
-                for match in self.timedelta_re.finditer(value):
-                    for match_kwarg, match_value in match.groupdict().items():
-                        if match_value is not None:
-                            kwargs[match_kwarg] = self.int(match_value)
-                return dt.timedelta(**kwargs)
-
-        # Looks like "1 week, 4 days"
-        if "," in value:
-            # normalize separator.
-            value = value.replace(";", ",")
-            parts = [
-                part.strip().replace(" ", "")
-                for part in value.split(",")
-                if part.strip()
-            ]
-        # Looks like "1 week; 4 days"
-        elif ";" in value:
-            # normalize separator.
-            value = value.replace(",", ";")
-            parts = [
-                part.strip().replace(" ", "")
-                for part in value.split(";")
-                if part.strip()
-            ]
+        timedelta_str = self.timedelta_str_re.match(value)
+        if timedelta_str:
+            # Parsing the output of str(timedelta(...))
+            for match_kwarg, match_value in timedelta_str.groupdict().items():
+                if match_value is not None:
+                    kwargs[match_kwarg] = self.int(match_value)
         else:
-            raise EnvironmentCastError("expected comma or semi-colon delimited string")
-
-        for part in parts:
-            ended_with_s = False
-            if part[-1] == "s":
-                ended_with_s = True
-                part = part[:-1]
-
-            if part.endswith("microsecond"):
-                kwargs["microseconds"] = self.int(
-                    part.rpartition("microsecond")[0] or "0"
-                )
-            elif ended_with_s and part.endswith("u"): # was "3us"
-                kwargs["microseconds"] = self.int(
-                    part.rpartition("u")[0] or "0"
-                )
-            elif ended_with_s and part.endswith("µ"): # was "3µs"
-                kwargs["microseconds"] = self.int(
-                    part.rpartition("µ")[0] or "0"
-                )
-            elif part.endswith("millisecond"):
-                kwargs["milliseconds"] = self.int(
-                    part.rpartition("millisecond")[0] or "0"
-                )
-            elif ended_with_s and part.endswith("m"):  # was "3ms"
-                kwargs["milliseconds"] = self.int(
-                    part.rpartition("m")[0] or "0"
-                )
-            elif part.endswith("second"):
-                kwargs["seconds"] = self.int(part.rpartition("second")[0] or "0")
-            elif part.endswith("sec"):
-                kwargs["seconds"] = self.int(part.rpartition("sec")[0] or "0")
-            elif ended_with_s and all(chr in string.digits for chr in part): # was "3s"
-                kwargs['seconds'] = self.int(part or "0")
-            elif part.endswith("minute"):
-                kwargs["minutes"] = self.int(part.rpartition("minute")[0] or "0")
-            elif part.endswith("min"):  # was "3 mins" or "3min"
-                kwargs["minutes"] = self.int(part.rpartition("min")[0] or "0")
-            elif ended_with_s is False and part.endswith("m"): # was "3m"
-                kwargs["minutes"] = self.int(
-                    part.rpartition("m")[0] or "0"
-                )
-            elif part.endswith("hour"):
-                kwargs["hours"] = self.int(part.rpartition("hour")[0] or "0")
-            elif part.endswith("hr"):  # was "3hrs" or "3hr"
-                kwargs["hours"] = self.int(part.rpartition("hr")[0] or "0")
-            elif part.endswith("week"):
-                kwargs["weeks"] = self.int(part.rpartition("week")[0] or "0")
-            elif part.endswith("wk"):  # was "3wk" or "3 wks"
-                kwargs["weeks"] = self.int(part.rpartition("wk")[0] or "0")
-            elif part.endswith("day"):
-                kwargs["days"] = self.int(part.rpartition("day")[0] or "0")
+            for match in self.timedelta_re.finditer(value):
+                for match_kwarg, match_value in match.groupdict().items():
+                    if match_value is not None:
+                        kwargs[match_kwarg] = self.int(match_value)
 
         if {*kwargs.values()} == {0}:
             raise EnvironmentCastError(
@@ -448,8 +369,9 @@ class EnvironmentCaster(object):
                 raise EnvironmentCastError(
                     f"Unable to convert stringified arguments representation into timedelta"
                 )
-        elif ";" in value:
+        elif ";" in value or ':' in value:
             # we know for sure it's '1 week; 2 days; 3 seconds'
+            # or '1 day, 6:10:12'
             return self._just_timedelta(value)
         else:
             # The format might be '1 week, 2 days, 3 minutes' or it could be
@@ -609,10 +531,12 @@ class EnvironmentCaster(object):
             return json.loads(value)
         except json.JSONDecodeError:
             if len(value) > 13:
-                example = '{0!s}...'.format(value[0:10])
+                example = "{0!s}...".format(value[0:10])
             else:
                 example = value
-            raise EnvironmentCastError("Could not parse value {0!r} as JSON".format(example))
+            raise EnvironmentCastError(
+                "Could not parse value {0!r} as JSON".format(example)
+            )
 
     def _guess_and_convert_string_to_arguments(self, value):
         # type: (Text) -> Tuple[Tuple, Dict[Text, Any]]
@@ -1499,9 +1423,35 @@ if __name__ == "__main__":
                 ("1 minutes, 3secs", dt.timedelta(minutes=1, seconds=3)),
                 ("1 minutes, 3sec", dt.timedelta(minutes=1, seconds=3)),
                 ("1 minutes, 3s", dt.timedelta(minutes=1, seconds=3)),
-                ("10wks, 4min, 10s, 9ms, 4us", dt.timedelta(weeks=10, minutes=4, seconds=10, milliseconds=9, microseconds=4)),
+                (
+                    "10wks, 4min, 10s, 9ms, 4us",
+                    dt.timedelta(
+                        weeks=10, minutes=4, seconds=10, milliseconds=9, microseconds=4
+                    ),
+                ),
                 ("5hr,34m,56s", dt.timedelta(hours=5, minutes=34, seconds=56)),
-                ("5hr34m56s", dt.timedelta(hours=5, minutes=34, seconds=56))
+                ("5hr34m56s", dt.timedelta(hours=5, minutes=34, seconds=56)),
+                (
+                    "5 days and 31 minutes and 10 seconds",
+                    dt.timedelta(days=5, minutes=31, seconds=10),
+                ),
+                (
+                    "50 days, 6:05:02.004003",
+                    dt.timedelta(days=50, seconds=21902, microseconds=4003),
+                ),
+                ("3d", dt.timedelta(days=3)),
+                ("-37D", dt.timedelta(days=-37)),
+                ("129m", dt.timedelta(minutes=129)),
+                ("-3d-5h", dt.timedelta(days=-3, hours=-5)),
+                ("-13d19m", dt.timedelta(days=-13, minutes=19)),
+                ("-4 days, 0:00:00", dt.timedelta(days=-4)),
+                ("-1 day, 23:59:59.999000", dt.timedelta(milliseconds=-1)),
+                ("0:00:00.001000", dt.timedelta(milliseconds=1)),
+                ("0:00:00.000004", dt.timedelta(microseconds=4)),
+                ("0:00:01", dt.timedelta(seconds=1)),
+                ("0:01:00", dt.timedelta(minutes=1)),
+                ("50 days, 6:05:02.004003", dt.timedelta(1, 2, 3, 4, 5, 6, 7)),
+                ("700000000 days, 0:00:00", dt.timedelta(weeks=100000000)),
             )
             for input, output in good:
                 with self.subTest(input=input):
