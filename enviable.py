@@ -314,22 +314,26 @@ class EnvironmentCaster(object):
         # without trailing 's'
         kwarg_map = {k[:-1]: k for k in kwargs}
         # looks like "1 week 4 days 3 minutes"
-        if "," not in value and ";" not in value and " " in value:
-            initial_parts = [part.strip() for part in value.split(" ") if part.strip()]
-            if len(initial_parts) % 2 != 0:
-                raise EnvironmentCastError(
-                    "Unexpected trailing parts parsing string into timedelta"
-                )
-            paired_parts = [
-                "{} {},".format(numpart, namepart)
-                for namepart, numpart in zip(initial_parts[1::2], initial_parts[0::2])
-                if namepart.strip() in kwarg_map
-            ]
-            if len(paired_parts) != (len(initial_parts) // 2):
-                raise EnvironmentCastError(
-                    "Unexpected change in length parsing string into timedelta"
-                )
-            value = "".join(paired_parts)
+        if "," not in value and ";" not in value
+            if " " in value:
+                initial_parts = [part.strip() for part in value.split(" ") if part.strip()]
+                if len(initial_parts) % 2 != 0:
+                    raise EnvironmentCastError(
+                        "Unexpected trailing parts parsing string into timedelta"
+                    )
+                paired_parts = [
+                    "{} {},".format(numpart, namepart)
+                    for namepart, numpart in zip(initial_parts[1::2], initial_parts[0::2])
+                    if namepart.strip() in kwarg_map
+                ]
+                if len(paired_parts) != (len(initial_parts) // 2):
+                    raise EnvironmentCastError(
+                        "Unexpected change in length parsing string into timedelta"
+                    )
+                value = "".join(paired_parts)
+            else:
+                # do some regex stuffs?
+                pass
 
         # Looks like "1 week, 4 days"
         if "," in value:
@@ -353,27 +357,55 @@ class EnvironmentCaster(object):
             raise EnvironmentCastError("expected comma or semi-colon delimited string")
 
         for part in parts:
+            ended_with_s = False
             if part[-1] == "s":
+                ended_with_s = True
                 part = part[:-1]
 
             if part.endswith("microsecond"):
                 kwargs["microseconds"] = self.int(
-                    part.partition("microsecond")[0] or "0"
+                    part.rpartition("microsecond")[0] or "0"
+                )
+            elif ended_with_s and part.endswith("u"): # was "3us"
+                kwargs["microseconds"] = self.int(
+                    part.rpartition("u")[0] or "0"
+                )
+            elif ended_with_s and part.endswith("µ"): # was "3µs"
+                kwargs["microseconds"] = self.int(
+                    part.rpartition("µ")[0] or "0"
                 )
             elif part.endswith("millisecond"):
                 kwargs["milliseconds"] = self.int(
-                    part.partition("millisecond")[0] or "0"
+                    part.rpartition("millisecond")[0] or "0"
+                )
+            elif ended_with_s and part.endswith("m"):  # was "3ms"
+                kwargs["milliseconds"] = self.int(
+                    part.rpartition("m")[0] or "0"
                 )
             elif part.endswith("second"):
-                kwargs["seconds"] = self.int(part.partition("second")[0] or "0")
+                kwargs["seconds"] = self.int(part.rpartition("second")[0] or "0")
+            elif part.endswith("sec"):
+                kwargs["seconds"] = self.int(part.rpartition("sec")[0] or "0")
+            elif ended_with_s and all(chr in string.digits for chr in part): # was "3s"
+                kwargs['seconds'] = self.int(part or "0")
             elif part.endswith("minute"):
-                kwargs["minutes"] = self.int(part.partition("minute")[0] or "0")
+                kwargs["minutes"] = self.int(part.rpartition("minute")[0] or "0")
+            elif part.endswith("min"):  # was "3 mins" or "3min"
+                kwargs["minutes"] = self.int(part.rpartition("min")[0] or "0")
+            elif ended_with_s is False and part.endswith("m"): # was "3m"
+                kwargs["minutes"] = self.int(
+                    part.rpartition("m")[0] or "0"
+                )
             elif part.endswith("hour"):
-                kwargs["hours"] = self.int(part.partition("hour")[0] or "0")
+                kwargs["hours"] = self.int(part.rpartition("hour")[0] or "0")
+            elif part.endswith("hr"):  # was "3hrs" or "3hr"
+                kwargs["hours"] = self.int(part.rpartition("hr")[0] or "0")
             elif part.endswith("week"):
-                kwargs["weeks"] = self.int(part.partition("week")[0] or "0")
+                kwargs["weeks"] = self.int(part.rpartition("week")[0] or "0")
+            elif part.endswith("wk"):  # was "3wk" or "3 wks"
+                kwargs["weeks"] = self.int(part.rpartition("wk")[0] or "0")
             elif part.endswith("day"):
-                kwargs["days"] = self.int(part.partition("day")[0] or "0")
+                kwargs["days"] = self.int(part.rpartition("day")[0] or "0")
 
         if {*kwargs.values()} == {0}:
             raise EnvironmentCastError(
@@ -383,6 +415,7 @@ class EnvironmentCaster(object):
         return dt.timedelta(**kwargs)
 
     def timedelta(self, value):
+        # type: (Text) -> dt.timedelta
         if "=" in value:
             # should be be "1, 2, weeks=1" or "days=3, x=4"
             args, kwargs = self._guess_and_convert_string_to_arguments(value)
@@ -551,7 +584,14 @@ class EnvironmentCaster(object):
 
     def json(self, value):
         # type: (Text) -> Any
-        return json.loads(value)
+        try:
+            return json.loads(value)
+        except json.JSONDecodeError:
+            if len(value) > 13:
+                example = '{0!s}...'.format(value[0:10])
+            else:
+                example = value
+            raise EnvironmentCastError("Could not parse value {0!r} as JSON".format(example))
 
     def _guess_and_convert_string_to_arguments(self, value):
         # type: (Text) -> Tuple[Tuple, Dict[Text, Any]]
@@ -1435,6 +1475,12 @@ if __name__ == "__main__":
                 ),
                 ("weeks=1, days=2", dt.timedelta(weeks=1, days=2)),
                 ("1,2, 3, 4", dt.timedelta(1, 2, 3, 4)),
+                ("1 minutes, 3secs", dt.timedelta(minutes=1, seconds=3)),
+                ("1 minutes, 3sec", dt.timedelta(minutes=1, seconds=3)),
+                ("1 minutes, 3s", dt.timedelta(minutes=1, seconds=3)),
+                ("10wks, 4min, 10s, 9ms, 4us", dt.timedelta(weeks=10, minutes=4, seconds=10, milliseconds=9, microseconds=4)),
+                ("5hr,34m,56s", dt.timedelta(hours=5, minutes=34, seconds=56)),
+                ("5hr34m56s", dt.timedelta(hours=5, minutes=34, seconds=56))
             )
             for input, output in good:
                 with self.subTest(input=input):
