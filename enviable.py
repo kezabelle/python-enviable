@@ -616,7 +616,7 @@ class Environment(object):
         return self.ensure.web_address(value)
 
     def django_database_url(self, key="DATABASE_URL", default=""):
-        # type: (Text, Text) -> Dict[Text, Any]
+        # type: (Text, Text) -> Dict[Text, Union[boolean, int, Text, Dict[Text, Text]]]
         aliases = {
             "postgre": "postgres",
             "postgresql": "postgres",
@@ -624,29 +624,55 @@ class Environment(object):
             "psql": "postgres",
             "pgsql": "postgres",
             "pg": "postgres",
+
             "mariadb": "mysql",
             "maria": "mysql",
             "mysqlclient": "mysql",
+
             "sqlite3": "sqlite",
+
+            "mysql-connector": "mysqlconnector",
+            "mysql-connecter": "mysqlconnector",
+            "mysql_connector": "mysqlconnector",
+            "mysql_connecter": "mysqlconnector",
+            
+            "awsredshift": "redshift",
+            "aws_redshift": "redshift",
+            "aws-redshift": "redshift",
         }
 
         builtin_scheme_map = {
             "postgres": "django.db.backends.postgresql",
             "mysql": "django.db.backends.mysql",
             "sqlite": "django.db.backends.sqlite3",
+            "mysqlconnector": 'mysql.connector.django',
+            "redshift": 'django_redshift_backend',
+            "oracle": 'django.db.backends.oracle',
+            "mssql": 'mssql',  # https://github.com/microsoft/mssql-django
         }
+
+        def int_or_none(item_to_convert):
+            try:
+                return self.ensure.int(item_to_convert)
+            except EnvironmentCastError as exc:
+                if item_to_convert.strip().lower() == "none":
+                    return None
+                raise EnvironmentCastError(str(exc))
+
         global_options = {
-            "ATOMIC_REQUESTS": env.ensure.boolean,
-            "AUTOCOMMIT": env.ensure.boolean,
-            "CONN_MAX_AGE": env.ensure.int,
-            "TIME_ZONE": env.ensure.text,
-            "DISABLE_SERVER_SIDE_CURSORS": env.ensure.boolean,
-            "CHARSET": env.ensure.text,
-            "COLLATION": env.ensure.text,
-            "MIGRATE": env.ensure.boolean,
-            "TEMPLATE": env.ensure.text,
+            "ATOMIC_REQUESTS": self.ensure.boolean,
+            "AUTOCOMMIT": self.ensure.boolean,
+            "CONN_MAX_AGE": int_or_none,
+            "TIME_ZONE": self.ensure.text,
+            "DISABLE_SERVER_SIDE_CURSORS": self.ensure.boolean,
+            "CHARSET": self.ensure.text,
+            "COLLATION": self.ensure.text,
+            "MIGRATE": self.ensure.boolean,
+            "TEMPLATE": self.ensure.text,
         }
         value = self.text(key, default)
+        if not value:
+            return {}
         result = urlparse(value)
         # scheme, netloc, path, params, query, fragment = result
         if result.scheme in builtin_scheme_map:
@@ -1400,6 +1426,337 @@ if __name__ == "__main__":
                 ),
             )
             for url, output in examples:
+                with self.subTest(url=url):
+                    env = Environment({"DATABASE_URL": url})
+                    self.assertDictEqual(output, env.django_database_url())
+
+        def test_database_url_via_django_environ_examples(self):
+            """
+            examples taken from https://github.com/joke2k/django-environ/blob/main/tests/test_db.py
+            """
+            django_environ_examples = (
+                (
+                    "postgres://user:password@//cloudsql/project-1234:us-central1:instance/dbname",
+                    {
+                        "ENGINE": "django.db.backends.postgresql",
+                        "PASSWORD": "password",
+                        "USER": "user",
+                        "NAME": "dbname",
+                        "HOST": "/cloudsql/project-1234:us-central1:instance",
+                    },
+                ),
+                ("sqlite://missing-slash-path", {}),
+                (
+                    "'postgres://user:pass@host:1234/dbname?conn_max_age=600'",
+                    {
+                        "CONN_MAX_AGE": 600,
+                        "ENGINE": "django.db.backends.postgresql",
+                        "HOST": "host",
+                        "NAME": "dbname",
+                        "OPTIONS": {},
+                        "PASSWORD": "pass",
+                        "PORT": 1234,
+                        "USER": "user",
+                    },
+                ),
+                (
+                    "postgres://user:pass@host:1234/dbname?"
+                    "conn_max_age=None&autocommit=True&atomic_requests=False",
+                    {
+                        "ATOMIC_REQUESTS": False,
+                        "AUTOCOMMIT": True,
+                        "CONN_MAX_AGE": None,
+                        "ENGINE": "django.db.backends.postgresql",
+                        "HOST": "host",
+                        "NAME": "dbname",
+                        "OPTIONS": {},
+                        "PASSWORD": "pass",
+                        "PORT": 1234,
+                        "USER": "user",
+                    },
+                ),
+                (
+                    "mysql://user:pass@host:1234/dbname?init_command=SET storage_engine=INNODB",
+                    {
+                        "ENGINE": "django.db.backends.mysql",
+                        "HOST": "host",
+                        "NAME": "dbname",
+                        "OPTIONS": {"init_command": "SET storage_engine=INNODB"},
+                        "PASSWORD": "pass",
+                        "PORT": 1234,
+                        "USER": "user",
+                    },
+                ),
+                (
+                    "postgres://uf07k1i6d8ia0v:wegauwhgeuioweg@ec2-107-21-253-135.compute-1.amazonaws.com:5431/d8r82722r2kuvn",
+                    {
+                        "ENGINE": "django.db.backends.postgresql",
+                        "HOST": "ec2-107-21-253-135.compute-1.amazonaws.com",
+                        "NAME": "d8r82722r2kuvn",
+                        "OPTIONS": {},
+                        "PASSWORD": "wegauwhgeuioweg",
+                        "PORT": 5431,
+                        "USER": "uf07k1i6d8ia0v",
+                    },
+                ),
+                (
+                    "postgres:////var/run/postgresql/db",
+                    {
+                        "ENGINE": "django.db.backends.postgresql",
+                        "NAME": "db",
+                        "HOST": "/var/run/postgresql",
+                        "OPTIONS": {},
+                    },
+                ),
+                (
+                    "postgis://uf07k1i6d8ia0v:wegauwhgeuioweg@ec2-107-21-253-135.compute-1.amazonaws.com:5431/d8r82722r2kuvn",
+                    {},
+                ),
+                (
+                    "mysqlgis://uf07k1i6d8ia0v:wegauwhgeuioweg@ec2-107-21-253-135.compute-1.amazonaws.com:5431/d8r82722r2kuvn",
+                    {},
+                ),
+                (
+                    "mysql://bea6eb025ca0d8:69772142@us-cdbr-east.cleardb.com/heroku_97681db3eff7580?reconnect=true",
+                    {
+                        "ENGINE": "django.db.backends.mysql",
+                        "HOST": "us-cdbr-east.cleardb.com",
+                        "NAME": "heroku_97681db3eff7580",
+                        "OPTIONS": {"reconnect": "true"},
+                        "PASSWORD": "69772142",
+                        "USER": "bea6eb025ca0d8",
+                    },
+                ),
+                (
+                    "mysql://travis@localhost/test_db",
+                    {
+                        "ENGINE": "django.db.backends.mysql",
+                        "HOST": "localhost",
+                        "NAME": "test_db",
+                        "OPTIONS": {},
+                        "USER": "travis",
+                    },
+                ),
+                (
+                    "sqlite://",
+                    {
+                        "ENGINE": "django.db.backends.sqlite3",
+                        "NAME": ":memory:",
+                        "OPTIONS": {},
+                    },
+                ),
+                (
+                    "sqlite:////full/path/to/your/file.sqlite",
+                    {
+                        "ENGINE": "django.db.backends.sqlite3",
+                        "NAME": "/full/path/to/your/file.sqlite",
+                        "OPTIONS": {},
+                    },
+                ),
+                (
+                    "sqlite://:memory:",
+                    {
+                        "ENGINE": "django.db.backends.sqlite3",
+                        "NAME": ":memory:",
+                        "OPTIONS": {},
+                    },
+                ),
+                (
+                    "ldap://cn=admin,dc=nodomain,dc=org:some_secret_password@ldap.nodomain.org/",
+                    {
+                        "ENGINE": "ldapdb.backends.ldap",
+                        "HOST": "ldap.nodomain.org",
+                        "NAME": "ldap://ldap.nodomain.org",
+                        "OPTIONS": {},
+                        "PASSWORD": "some_secret_password",
+                        "USER": "cn=admin,dc=nodomain,dc=org",
+                    },
+                ),
+            )
+            for url, output in django_environ_examples:
+                with self.subTest(url=url):
+                    env = Environment({"DATABASE_URL": url})
+                    self.assertDictEqual(output, env.django_database_url())
+
+        def test_database_url_from_dj_database_url(self):
+            """
+            examples taken from https://github.com/jacobian/dj-database-url/blob/master/test_dj_database_url.py
+            """
+            dj_database_url_examples = (
+                (
+                    "postgres://uf07k1i6d8ia0v:wegauwhgeuioweg@ec2-107-21-253-135.compute-1.amazonaws.com:5431/d8r82722r2kuvn",
+                    {},
+                ),
+                (
+                    "postgres://%2Fvar%2Frun%2Fpostgresql/d8r82722r2kuvn",
+                    {
+                        "ENGINE": "django.db.backends.postgresql",
+                        "HOST": "/var/run/postgresql",
+                        "NAME": "d8r82722r2kuvn",
+                        "OPTIONS": {},
+                    },
+                ),
+                (
+                    "postgres://%2FUsers%2Fpostgres%2FRuN/d8r82722r2kuvn",
+                    {
+                        "ENGINE": "django.db.backends.postgresql",
+                        "HOST": "/Users/postgres/RuN",
+                        "NAME": "d8r82722r2kuvn",
+                        "OPTIONS": {},
+                    },
+                ),
+                (
+                    "postgres://ieRaekei9wilaim7:wegauwhgeuioweg@[2001:db8:1234::1234:5678:90af]:5431/d8r82722r2kuvn",
+                    {
+                        "ENGINE": "django.db.backends.postgresql",
+                        "HOST": "2001:db8:1234::1234:5678:90af",
+                        "NAME": "d8r82722r2kuvn",
+                        "OPTIONS": {},
+                        "PASSWORD": "wegauwhgeuioweg",
+                        "PORT": 5431,
+                        "USER": "ieRaekei9wilaim7",
+                    },
+                ),
+                (
+                    "postgres://uf07k1i6d8ia0v:wegauwhgeuioweg@ec2-107-21-253-135.compute-1.amazonaws.com:5431/d8r82722r2kuvn?currentSchema=otherschema",
+                    {
+                        "ENGINE": "django.db.backends.postgresql",
+                        "HOST": "ec2-107-21-253-135.compute-1.amazonaws.com",
+                        "NAME": "d8r82722r2kuvn",
+                        "OPTIONS": {"options": "-c search_path=otherschema"},
+                        "PASSWORD": "wegauwhgeuioweg",
+                        "PORT": 5431,
+                        "USER": "uf07k1i6d8ia0v",
+                    },
+                ),
+                (
+                    "postgres://%23user:%23password@ec2-107-21-253-135.compute-1.amazonaws.com:5431/%23database",
+                    {
+                        "ENGINE": "django.db.backends.postgresql",
+                        "HOST": "ec2-107-21-253-135.compute-1.amazonaws.com",
+                        "NAME": "#database",
+                        "OPTIONS": {},
+                        "PASSWORD": "#password",
+                        "PORT": 5431,
+                        "USER": "#user",
+                    },
+                ),
+                (
+                    "mysql-connector://uf07k1i6d8ia0v:wegauwhgeuioweg@ec2-107-21-253-135.compute-1.amazonaws.com:5431/d8r82722r2kuvn",
+                    {},
+                ),
+                # (
+                #     "django_mysqlpool.backends.mysqlpool://bea6eb025ca0d8:69772142@us-cdbr-east.cleardb.com/heroku_97681db3eff7580?reconnect=true",
+                #     {},
+                # ),
+                (
+                    "postgres://uf07k1i6d8ia0v:wegauwhgeuioweg@ec2-107-21-253-135.compute-1.amazonaws.com:5431/d8r82722r2kuvn?sslrootcert=rds-combined-ca-bundle.pem&sslmode=verify-full",
+                    {
+                        "ENGINE": "django.db.backends.postgresql",
+                        "HOST": "ec2-107-21-253-135.compute-1.amazonaws.com",
+                        "NAME": "d8r82722r2kuvn",
+                        "OPTIONS": {
+                            "sslmode": "verify-full",
+                            "sslrootcert": "rds-combined-ca-bundle.pem",
+                        },
+                        "PASSWORD": "wegauwhgeuioweg",
+                        "PORT": 5431,
+                        "USER": "uf07k1i6d8ia0v",
+                    },
+                ),
+                (
+                    "postgres://uf07k1i6d8ia0v:wegauwhgeuioweg@ec2-107-21-253-135.compute-1.amazonaws.com:5431/d8r82722r2kuvn?",
+                    {
+                        "ENGINE": "django.db.backends.postgresql",
+                        "HOST": "ec2-107-21-253-135.compute-1.amazonaws.com",
+                        "NAME": "d8r82722r2kuvn",
+                        "OPTIONS": {},
+                        "PASSWORD": "wegauwhgeuioweg",
+                        "PORT": 5431,
+                        "USER": "uf07k1i6d8ia0v",
+                    },
+                ),
+                (
+                    "mysql://uf07k1i6d8ia0v:wegauwhgeuioweg@ec2-107-21-253-135.compute-1.amazonaws.com:3306/d8r82722r2kuvn?ssl-ca=rds-combined-ca-bundle.pem",
+                    {
+                        "ENGINE": "django.db.backends.mysql",
+                        "HOST": "ec2-107-21-253-135.compute-1.amazonaws.com",
+                        "NAME": "d8r82722r2kuvn",
+                        "OPTIONS": {"ssl": {"ca": "rds-combined-ca-bundle.pem"}},
+                        "PASSWORD": "wegauwhgeuioweg",
+                        "PORT": 3306,
+                        "USER": "uf07k1i6d8ia0v",
+                    },
+                ),
+                (
+                    "oracle://scott:tiger@oraclehost:1521/hr",
+                    {
+                        "ENGINE": "django.db.backends.oracle",
+                        "HOST": "oraclehost",
+                        "NAME": "hr",
+                        "OPTIONS": {},
+                        "PASSWORD": "tiger",
+                        "PORT": 1521,
+                        "USER": "scott",
+                    },
+                ),
+                (
+                    "oracle://scott:tiger@/(DESCRIPTION=(ADDRESS_LIST=(ADDRESS=(PROTOCOL=TCP)(HOST=oraclehost)(PORT=1521)))(CONNECT_DATA=(SID=hr)))",
+                    {
+                        "ENGINE": "oracle",
+                        "NAME": "(DESCRIPTION=(ADDRESS_LIST=(ADDRESS=(PROTOCOL=TCP)(HOST=oraclehost)(PORT=1521)))(CONNECT_DATA=(SID=hr)))",
+                        "OPTIONS": {},
+                        "PASSWORD": "tiger",
+                        "USER": "scott",
+                    },
+                ),
+                (
+                    "oracle://scott:tiger@/tnsname",
+                    {
+                        "ENGINE": "django.db.backends.oracle",
+                        "NAME": "tnsname",
+                        "OPTIONS": {},
+                        "PASSWORD": "tiger",
+                        "USER": "scott",
+                    },
+                ),
+                (
+                    "redshift://uf07k1i6d8ia0v:wegauwhgeuioweg@ec2-107-21-253-135.compute-1.amazonaws.com:5439/d8r82722r2kuvn?currentSchema=otherschema",
+                    {
+                        "ENGINE": "django_redshift_backend",
+                        "HOST": "ec2-107-21-253-135.compute-1.amazonaws.com",
+                        "NAME": "d8r82722r2kuvn",
+                        "OPTIONS": {"options": "-c search_path=otherschema"},
+                        "PASSWORD": "wegauwhgeuioweg",
+                        "PORT": 5439,
+                        "USER": "uf07k1i6d8ia0v",
+                    },
+                ),
+                (
+                    "mssql://uf07k1i6d8ia0v:wegauwhgeuioweg@ec2-107-21-253-135.compute-1.amazonaws.com/d8r82722r2kuvn?driver=ODBC Driver 13 for SQL Server",
+                    {
+                        "ENGINE": "sql_server.pyodbc",
+                        "HOST": "ec2-107-21-253-135.compute-1.amazonaws.com",
+                        "NAME": "d8r82722r2kuvn",
+                        "OPTIONS": {"driver": "ODBC Driver 13 for SQL Server"},
+                        "PASSWORD": "wegauwhgeuioweg",
+                        "USER": "uf07k1i6d8ia0v",
+                    },
+                ),
+                (
+                    "mssql://uf07k1i6d8ia0v:wegauwhgeuioweg@ec2-107-21-253-135.compute-1.amazonaws.com\\insnsnss:12345/d8r82722r2kuvn?driver=ODBC Driver 13 for SQL Server",
+                    {
+                        "ENGINE": "sql_server.pyodbc",
+                        "HOST": "ec2-107-21-253-135.compute-1.amazonaws.com\\insnsnss",
+                        "NAME": "d8r82722r2kuvn",
+                        "OPTIONS": {"driver": "ODBC Driver 13 for SQL Server"},
+                        "PASSWORD": "wegauwhgeuioweg",
+                        "PORT": 12345,
+                        "USER": "uf07k1i6d8ia0v",
+                    },
+                ),
+            )
+            for url, output in dj_database_url_examples:
                 with self.subTest(url=url):
                     env = Environment({"DATABASE_URL": url})
                     self.assertDictEqual(output, env.django_database_url())
