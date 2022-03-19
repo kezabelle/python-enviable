@@ -299,6 +299,121 @@ class EnvironmentCaster(object):
             "Could not parse value {0!r} into a datetime.time".format(value)
         )
 
+    def _just_timedelta(self, value):
+        # type: (Text) -> dt.timedelta
+        # Looks like "1 week, 4 days" and isn't weeks=1, days=4
+        kwargs = {
+            "days": 0,
+            "seconds": 0,
+            "microseconds": 0,
+            "milliseconds": 0,
+            "minutes": 0,
+            "hours": 0,
+            "weeks": 0,
+        }
+        # without trailing 's'
+        kwarg_map = {k[:-1]: k for k in kwargs}
+        # looks like "1 week 4 days 3 minutes"
+        if "," not in value and ";" not in value and " " in value:
+            initial_parts = [part.strip() for part in value.split(" ") if part.strip()]
+            if len(initial_parts) % 2 != 0:
+                raise EnvironmentCastError(
+                    "Unexpected trailing parts parsing string into timedelta"
+                )
+            paired_parts = [
+                "{} {},".format(numpart, namepart)
+                for namepart, numpart in zip(initial_parts[1::2], initial_parts[0::2])
+                if namepart.strip() in kwarg_map
+            ]
+            if len(paired_parts) != (len(initial_parts) // 2):
+                raise EnvironmentCastError(
+                    "Unexpected change in length parsing string into timedelta"
+                )
+            value = "".join(paired_parts)
+
+        # Looks like "1 week, 4 days"
+        if "," in value:
+            # normalize separator.
+            value = value.replace(";", ",")
+            parts = [
+                part.strip().replace(" ", "")
+                for part in value.split(",")
+                if part.strip()
+            ]
+        # Looks like "1 week; 4 days"
+        elif ";" in value:
+            # normalize separator.
+            value = value.replace(",", ";")
+            parts = [
+                part.strip().replace(" ", "")
+                for part in value.split(";")
+                if part.strip()
+            ]
+        else:
+            raise EnvironmentCastError("expected comma or semi-colon delimited string")
+
+        for part in parts:
+            if part[-1] == "s":
+                part = part[:-1]
+
+            if part.endswith("microsecond"):
+                kwargs["microseconds"] = self.int(
+                    part.partition("microsecond")[0] or "0"
+                )
+            elif part.endswith("millisecond"):
+                kwargs["milliseconds"] = self.int(
+                    part.partition("millisecond")[0] or "0"
+                )
+            elif part.endswith("second"):
+                kwargs["seconds"] = self.int(part.partition("second")[0] or "0")
+            elif part.endswith("minute"):
+                kwargs["minutes"] = self.int(part.partition("minute")[0] or "0")
+            elif part.endswith("hour"):
+                kwargs["hours"] = self.int(part.partition("hour")[0] or "0")
+            elif part.endswith("week"):
+                kwargs["weeks"] = self.int(part.partition("week")[0] or "0")
+            elif part.endswith("day"):
+                kwargs["days"] = self.int(part.partition("day")[0] or "0")
+
+        if {*kwargs.values()} == {0}:
+            raise EnvironmentCastError(
+                "Failed to parse any positive/negative components from timedelta string"
+            )
+
+        return dt.timedelta(**kwargs)
+
+    def timedelta(self, value):
+        if "=" in value:
+            # should be be "1, 2, weeks=1" or "days=3, x=4"
+            args, kwargs = self._guess_and_convert_string_to_arguments(value)
+            # I can't use inspect.signature, I think because timedelta doesn't
+            # implement __text_signature__
+            try:
+                return dt.timedelta(*args, **kwargs)
+            except TypeError as exc:
+                raise EnvironmentCastError(
+                    f"Unable to convert stringified arguments representation into timedelta"
+                )
+        elif ";" in value:
+            # we know for sure it's '1 week; 2 days; 3 seconds'
+            return self._just_timedelta(value)
+        else:
+            # The format might be '1 week, 2 days, 3 minutes' or it could be
+            # '1, 2, 3' as plain arguments.
+            try:
+                return self._just_timedelta(value)
+            except EnvironmentCastError:
+                # it's probably '1, 2, 3, 4'
+                args, kwargs = self._guess_and_convert_string_to_arguments(value)
+                # I can't use inspect.signature, I think because timedelta doesn't
+                # implement __text_signature__
+                try:
+                    return dt.timedelta(*args, **kwargs)
+                except TypeError as exc:
+                    raise EnvironmentCastError(
+                        f"Unable to convert stringified arguments representation into timedelta"
+                    )
+
     def email(self, value):
         # type: (Text) -> Text
         if "@" not in value:
@@ -438,6 +553,57 @@ class EnvironmentCaster(object):
         # type: (Text) -> Any
         return json.loads(value)
 
+    def _guess_and_convert_string_to_arguments(self, value):
+        # type: (Text) -> Tuple[Tuple, Dict[Text, Any]]
+        parts = [part.strip() for part in value.split(",") if part.strip()]
+        args, kwargs = (), {}
+        types = (
+            self.int,
+            self.datetime,
+            self.date,
+            self.time,
+            self.decimal,
+            self.uuid,
+            self.bool,
+            # text based fallbacks.
+            self.email,
+            self.hex,
+            self.b64,
+            self.filepath,
+            self.directory,
+            self.importable,
+            self.web_address,
+            self.json,
+        )
+        for part in parts:
+            param_name, sep, param_value = part.partition("=")
+            if not sep:
+                for converter in types:
+                    try:
+                        converted = converter(part)
+                    except EnvironmentCastError:
+                        continue
+                    else:
+                        args += (converted,)
+                        logger.debug("Converted %s using %s", part, converter)
+                        break
+            else:
+                value = param_value.strip()
+                for converter in types:
+                    try:
+                        converted = converter(value)
+                    except EnvironmentCastError:
+                        continue
+                    else:
+                        kwargs[param_name.strip()] = converted
+                        logger.debug(
+                            "Converted %s using %s",
+                            param_name.strip(),
+                            converter,
+                        )
+                        break
+        return args, kwargs
+
 
 class Environment(object):
     """
@@ -575,6 +741,11 @@ class Environment(object):
         value = self.text(key, default)
         return self.ensure.time(value)
 
+    def timedelta(self, key, default=""):
+        # type: (Text, Text) -> dt.timedelta
+        value = self.text(key, default)
+        return self.ensure.timedelta(value)
+
     def email(self, key, default=""):
         # type: (Text, Text) -> Text
         value = self.text(key, default)
@@ -624,18 +795,14 @@ class Environment(object):
             "psql": "postgres",
             "pgsql": "postgres",
             "pg": "postgres",
-
             "mariadb": "mysql",
             "maria": "mysql",
             "mysqlclient": "mysql",
-
             "sqlite3": "sqlite",
-
             "mysql-connector": "mysqlconnector",
             "mysql-connecter": "mysqlconnector",
             "mysql_connector": "mysqlconnector",
             "mysql_connecter": "mysqlconnector",
-            
             "awsredshift": "redshift",
             "aws_redshift": "redshift",
             "aws-redshift": "redshift",
@@ -645,10 +812,10 @@ class Environment(object):
             "postgres": "django.db.backends.postgresql",
             "mysql": "django.db.backends.mysql",
             "sqlite": "django.db.backends.sqlite3",
-            "mysqlconnector": 'mysql.connector.django',
-            "redshift": 'django_redshift_backend',
-            "oracle": 'django.db.backends.oracle',
-            "mssql": 'mssql',  # https://github.com/microsoft/mssql-django
+            "mysqlconnector": "mysql.connector.django",
+            "redshift": "django_redshift_backend",
+            "oracle": "django.db.backends.oracle",
+            "mssql": "mssql",  # https://github.com/microsoft/mssql-django
         }
 
         def int_or_none(item_to_convert):
@@ -1244,6 +1411,34 @@ if __name__ == "__main__":
                 with self.subTest(input=input):
                     with self.assertRaises(EnvironmentCastError):
                         self.e.decimal(input)
+
+        def test_timedeltas_good(self):
+            good = (
+                ("1 day", dt.timedelta(days=1)),
+                ("1 day, 10 minute", dt.timedelta(days=1, minutes=10)),
+                ("1 day; 10 minutes", dt.timedelta(days=1, minutes=10)),
+                (
+                    "1 day, 10 minutes, 4 seconds",
+                    dt.timedelta(days=1, minutes=10, seconds=4),
+                ),
+                (
+                    "1 day; 10 minutes, 4 seconds",
+                    dt.timedelta(days=1, minutes=10, seconds=4),
+                ),
+                (
+                    "1 day, 10 minutes, 4 second, 10 milliseconds",
+                    dt.timedelta(days=1, minutes=10, seconds=4, milliseconds=10),
+                ),
+                (
+                    "1 day, 10 minutes; 4 seconds; 10 millisecond",
+                    dt.timedelta(days=1, minutes=10, seconds=4, milliseconds=10),
+                ),
+                ("weeks=1, days=2", dt.timedelta(weeks=1, days=2)),
+                ("1,2, 3, 4", dt.timedelta(1, 2, 3, 4)),
+            )
+            for input, output in good:
+                with self.subTest(input=input):
+                    self.assertEqual(self.e.timedelta(input), output)
 
     class TestBasicEnviron(unittest.TestCase):
         def setUp(self):
