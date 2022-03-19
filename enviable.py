@@ -205,6 +205,23 @@ class EnvironmentCaster(object):
 
     __slots__ = ()
 
+    timedelta_re = re.compile(
+        r'(?P<days>[0-9]{1,})\s*(?:d|dys?|days?)'
+        r'|'
+        r'(?P<seconds>[0-9]{1,})\s*(?:s|secs?|seconds?)'
+        r'|'
+        r'(?P<microseconds>[0-9]{1,})\s*(?:us?|µs?|microsecs?|microseconds?)'
+        r'|'
+        r'(?P<milliseconds>[0-9]{1,})\s*(?:ms|millisecs?|milliseconds?)'
+        r'|'
+        r'(?P<minutes>[0-9]{1,})\s*(?:m|mins?|minutes?)'
+        r'|'
+        r'(?P<hours>[0-9]{1,})\s*(?:h|hrs?|hours?)'
+        r'|'
+        r'(?P<weeks>[0-9]{1,})\s*(?:w|wks?|weeks?)',
+        flags=re.UNICODE | re.IGNORECASE
+    )
+
     def text(self, value):
         # type: (Text) -> Text
         sq = "'"
@@ -314,7 +331,7 @@ class EnvironmentCaster(object):
         # without trailing 's'
         kwarg_map = {k[:-1]: k for k in kwargs}
         # looks like "1 week 4 days 3 minutes"
-        if "," not in value and ";" not in value
+        if "," not in value and ";" not in value:
             if " " in value:
                 initial_parts = [part.strip() for part in value.split(" ") if part.strip()]
                 if len(initial_parts) % 2 != 0:
@@ -332,8 +349,12 @@ class EnvironmentCaster(object):
                     )
                 value = "".join(paired_parts)
             else:
-                # do some regex stuffs?
-                pass
+                # Falling back to regular expressions for complex ones.
+                for match in self.timedelta_re.finditer(value):
+                    for match_kwarg, match_value in match.groupdict().items():
+                        if match_value is not None:
+                            kwargs[match_kwarg] = self.int(match_value)
+                return dt.timedelta(**kwargs)
 
         # Looks like "1 week, 4 days"
         if "," in value:
