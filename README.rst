@@ -130,8 +130,8 @@ and to go off-reservation, you can get JSON out, or the raw environment string::
     env.json("VAR_NAME", "{}") == {}
     env.raw("VAR_NAME", "'   ...  '") == "'   ...  '"
 
-Temporal values (datetimes, dates, times)
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Temporal values (datetimes, dates, times, timedeltas)
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 If you have `Django`_ (or Python **3.7+**) installed (because that's my main use case and I'm lazy)
 you can also get datetimes if you provide a value in ISO 8601 format::
@@ -152,6 +152,16 @@ or times::
     env.time("VAR_NAME", "13:13:13.123")
     env.time("VAR_NAME", "13:13:13")
     env.time("VAR_NAME", "13:13")
+
+or timedeltas (which **do not** depend on `Django`_)::
+
+    env.timedelta("VAR_NAME", "1 day, 10 minutes")
+    env.timedelta("VAR_NAME", "1 day, 10 minutes; 4 seconds; 10 millisecond")
+    env.timedelta("VAR_NAME", "1 minutes, 3secs")
+    env.timedelta("VAR_NAME", "10wks, 4min, 10s, 9ms, 4us")
+    env.timedelta("VAR_NAME", "-13d19m")
+    env.timedelta("VAR_NAME", "-1 day, 23:59:59.999000")
+    env.timedelta("VAR_NAME", "0:00:00.001000")
 
 Iterables
 ^^^^^^^^^
@@ -192,6 +202,38 @@ Each value may be cast to any of the non-iterable methods documented above, by u
 so that keys can have a different type to values. Both must still be homogenous::
 
     env.dict("VAR_NAME", "a=1, b=2, c=3", key_converter=env.ensure.hex, value_converter=env.ensure.int) == {'a': 1, 'c': 3, 'b': 2}
+
+
+Django database URLs
+^^^^^^^^^^^^^^^^^^^^
+
+To facilitate an easier transition from `dj-database-url`_ or `django-environ`_,
+there's support for reading a ``DATABASE_URL`` (or other named env var) into
+the correct format to fit the `Django`_ ``DATABASES`` dictionaries::
+
+    # default key is implicitly "DATABASE_URL"
+    env.django_database_url(default="sqlite://:memory:")
+    env.django_database_url("MY_DB", "postgres://user:pass@host:1234/dbname?conn_max_age=600")
+    env.django_database_url("DATABASE_URL", "psql://user:pass@host:1234/dbname?conn_max_age=None&autocommit=True&atomic_requests=False")
+    env.django_database_url("MYSQL_DBASE", "mysql://user:pass@host:1234/dbname?init_command=SET storage_engine=INNODB")
+    env.django_database_url("PG_SOCKET", "postgres:////var/run/postgresql/db")
+
+so you can ultimately do::
+
+    DATABASES = {
+        "default": env.django_database_url("postgres://localhost?conn_max_age=1"),
+        "other_db": env.django_database_url("OTHER_DB", "sqlite://:memory:"),
+    }
+
+Differences from those libraries
+''''''''''''''''''''''''''''''''
+
+- Using the ``mssql`` scheme sets the driver to use `mssql-python`_.
+- Providing a URL fragment (``?query_string...#x=10&y=True``) parses those key/values
+  the same as the query string, but **always** puts them into the dictionary's global
+  options, never into the ``'OPTIONS'`` key.
+- the function ``django_database_url`` doesn't accept the ``conn_max_age`` and ``ssl_require`` used by `dj-database-url`_
+
 
 Handling errors
 ---------------
@@ -308,3 +350,6 @@ It's `FreeBSD`_. There's should be a ``LICENSE`` file in the root of the reposit
 
 .. _FreeBSD: http://en.wikipedia.org/wiki/BSD_licenses#2-clause_license_.28.22Simplified_BSD_License.22_or_.22FreeBSD_License.22.29
 .. _Django: https://www.djangoproject.com/
+.. _dj-database-url: https://github.com/jacobian/dj-database-url
+.. _django-environ: https://github.com/joke2k/django-environ
+.. _mssql-python: https://github.com/microsoft/mssql-django
