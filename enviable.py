@@ -771,8 +771,26 @@ class Environment(object):
         value = self.text(key, default)
         return self.ensure.web_address(value)
 
-    def django_database_url(self, key="DATABASE_URL", default=""):
+    def django_database_url(self, key="", default=""):
         # type: (Text, Text) -> Dict[Text, Union[boolean, int, Text, Dict[Text, Text]]]
+        # Facilitate swapping, so that you can do the following:
+        # env.django_database_url("sqlite://:memory:") and have it
+        # successfully read the value from the database.
+        # or alternatively do:
+        # env.django_database_url("MY_DB")
+        # which won't give you a default value ...
+        if default == "":
+            if key == "":
+                key = "DATABASE_URL"
+            elif "://" in key:
+                default = key
+                key = "DATABASE_URL"
+        elif key == "":
+            key = "DATABASE_URL"
+
+        if not default:
+            raise TypeError("{cls}.django_database_url() missing 1 required argument: 'default'".format(cls=self.__class__.__name__))
+
         aliases = {
             "postgre": "postgres",
             "postgregis": "postgis",
@@ -837,8 +855,6 @@ class Environment(object):
             "TEMPLATE": self.ensure.text,
         }
         value = self.text(key, default)
-        if not value:
-            return {}
         result = urlparse(value)
         # scheme, netloc, path, params, query, fragment = result
         if result.scheme in builtin_scheme_map:
@@ -887,7 +903,7 @@ class Environment(object):
         # Special-case LDAP, fo compatibility with django-environ
         # https://github.com/joke2k/django-environ/blob/44ac6649ad6135ff4246371880298bf732cd1c52/environ/environ.py#L496-L502
         elif engine == "ldapdb.backends.ldap":
-            path = '{}://{}'.format(result.scheme, host)
+            path = "{}://{}".format(result.scheme, host)
             if port:
                 path += ":{}".format(port)
 
@@ -1712,7 +1728,58 @@ if __name__ == "__main__":
             for url, output in examples:
                 with self.subTest(url=url):
                     env = Environment({"DATABASE_URL": url})
-                    self.assertDictEqual(output, env.django_database_url())
+                    self.assertDictEqual(output, env.django_database_url(default="sqlite:////should/never/be/used.db"))
+
+        def test_database_url_switching(self):
+            env = Environment(
+                {
+                    "DATABASE_URL": "sqlite://:memory:",
+                    "OTHER_DATABASE": "sqlite:////path/to/file.db",
+                }
+            )
+            with self.subTest("blank key, blank default"):
+                with self.assertRaises(TypeError):
+                    env.django_database_url()
+                with self.assertRaises(TypeError):
+                    env.django_database_url(key="", default="")
+            with self.subTest("key only (no default)"):
+                with self.assertRaises(TypeError):
+                    env.django_database_url("OTHER_DATABASE")
+                with self.assertRaises(TypeError):
+                    env.django_database_url(key="OTHER_DATABASE")
+
+            with self.subTest("only default (no key)"):
+                # falls back to using DATABASE_URL, rather than OTHER_DB or the fallback
+                # because the key is implicitly turned into `DATABASE_URL`
+                out = {
+                    "ENGINE": "django.db.backends.sqlite3",
+                    "NAME": ":memory:",
+                    "OPTIONS": {},
+                }
+                self.assertDictEqual(
+                    out, env.django_database_url("sqlite:////test/file.db")
+                )
+                self.assertDictEqual(
+                    out, env.django_database_url(default="sqlite:////test/file.db")
+                )
+
+            with self.subTest("key & default"):
+                # THIRD_DB doesn't exist, so use the fallback
+                out = {
+                    "ENGINE": "django.db.backends.sqlite3",
+                    "NAME": "/test/file.db",
+                    "OPTIONS": {},
+                }
+                self.assertDictEqual(
+                    out,
+                    env.django_database_url("THIRD_DB", "sqlite:////test/file.db"),
+                )
+                self.assertDictEqual(
+                    out,
+                    env.django_database_url(
+                        key="THIRD_DB", default="sqlite:////test/file.db"
+                    ),
+                )
 
         def test_database_url_via_django_environ_examples(self):
             """
@@ -1884,7 +1951,7 @@ if __name__ == "__main__":
             for url, output in django_environ_examples:
                 with self.subTest(url=url):
                     env = Environment({"DATABASE_URL": url})
-                    self.assertDictEqual(output, env.django_database_url())
+                    self.assertDictEqual(output, env.django_database_url(default="sqlite:////should/never/be/used.db"))
 
         def test_database_url_from_dj_database_url(self):
             """
@@ -2083,7 +2150,7 @@ if __name__ == "__main__":
             for url, output in dj_database_url_examples:
                 with self.subTest(url=url):
                     env = Environment({"DATABASE_URL": url})
-                    self.assertDictEqual(output, env.django_database_url())
+                    self.assertDictEqual(output, env.django_database_url(default="sqlite:////should/never/be/used.db"))
 
     try:
         from mypy import api as mypy
