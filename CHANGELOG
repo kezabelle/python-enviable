@@ -1,5 +1,15 @@
 Change history for enviable
 ---------------------------
+
+?next?
+^^^^^^
+
+* **Breaking change**: the ``default`` argument of ``env.int``, ``env.text``, etc is now required, rather than defaulting to ``""``.
+* Feature: added a ``timedelta`` method to the ``env`` (or ``Environment``) for parsing strings like ``1 day, 10 minutes``.
+* Feature: added a ``django_database_url`` method to the ``env`` (or ``Environment``) to allow for reading ``DATABASE_URL`` etc.
+* Feature: add a ``print()`` method to the ``env`` (or ``Environment``) to output in ``.env`` or ``.envrc`` format, for easy generation of config files.
+* Feature: parse temporal values without Django, as long as Python 3.7+ is available.
+
 0.2.2
 ^^^^^^
 * Bugfix: the ``typing`` module is no longer a hard-dependency, because whilst you have it on py3, you only *might* have it in a py2 environment. See `GitHub issue 2`_
