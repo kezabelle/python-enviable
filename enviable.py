@@ -685,7 +685,7 @@ class Environment(object):
         # type: (Text, Text) -> None
         raise NotImplementedError("Won't handle this datatype")
 
-    def text(self, key, default=""):
+    def text(self, key, default):
         # type: (Text, Text) -> Text
         value = self.raw(key, default)
         value = self._tidy_raw_string(key, value)
@@ -694,79 +694,79 @@ class Environment(object):
     str = text
     unicode = text
 
-    def int(self, key, default=""):
+    def int(self, key, default):
         # type: (Text, Text) -> int
         value = self.text(key, default)
         return self.ensure.int(value)
 
-    def boolean(self, key, default=""):
+    def boolean(self, key, default):
         # type: (Text, Text) -> bool
         value = self.text(key, default)
         return self.ensure.boolean(value)
 
     bool = boolean
 
-    def uuid(self, key, default=""):
+    def uuid(self, key, default):
         # type: (Text, Text) -> uuid.UUID
         value = self.text(key, default)
         return self.ensure.uuid(value)
 
-    def datetime(self, key, default=""):
+    def datetime(self, key, default):
         # type: (Text, Text) -> dt.datetime
         value = self.text(key, default)
         return self.ensure.datetime(value)
 
-    def date(self, key, default=""):
+    def date(self, key, default):
         # type: (Text, Text) -> dt.date
         value = self.text(key, default)
         return self.ensure.date(value)
 
-    def time(self, key, default=""):
+    def time(self, key, default):
         # type: (Text, Text) -> dt.time
         value = self.text(key, default)
         return self.ensure.time(value)
 
-    def timedelta(self, key, default=""):
+    def timedelta(self, key, default):
         # type: (Text, Text) -> dt.timedelta
         value = self.text(key, default)
         return self.ensure.timedelta(value)
 
-    def email(self, key, default=""):
+    def email(self, key, default):
         # type: (Text, Text) -> Text
         value = self.text(key, default)
         return self.ensure.email(value)
 
-    def hex(self, key, default=""):
+    def hex(self, key, default):
         # type: (Text, Text) -> Text
         value = self.text(key, default)
         return self.ensure.hex(value)
 
-    def b64(self, key, default=""):
+    def b64(self, key, default):
         # type: (Text, Text) -> Union[bytes, Text]
         value = self.text(key, default)
         return self.ensure.b64(value)
 
-    def decimal(self, key, default=""):
+    def decimal(self, key, default):
         # type: (Text, Text) -> decimal.Decimal
         value = self.text(key, default)
         return self.ensure.decimal(value)
 
-    def importable(self, key, default=""):
+    def importable(self, key, default):
         # type: (Text, Text) -> Text
         value = self.text(key, default)
         return self.ensure.importable(value)
 
-    def filepath(self, key, default=""):
+    def filepath(self, key, default):
         # type: (Text, Text) -> Text
         value = self.text(key, default)
         return self.ensure.filepath(value)
 
-    def directory(self, key, default=""):
+    def directory(self, key, default):
         # type: (Text, Text) -> Text
         value = self.text(key, default)
         return self.ensure.directory(value)
 
-    def web_address(self, key, default=""):
+    def web_address(self, key, default):
         # type: (Text, Text) -> Text
         value = self.text(key, default)
         return self.ensure.web_address(value)
@@ -1016,13 +1016,13 @@ class Environment(object):
         values = (converter(value=x) for x in value.split(split_by) if x)
         return values
 
-    def tuple(self, key, default="", converter=None):
+    def tuple(self, key, default, converter=None):
         # type: (Text, Text, Optional[Callable[..., Any]]) -> Tuple[Any, ...]
         return tuple(
             self._tidy_iterable(key, self.raw(key, default), converter=converter)
         )
 
-    def list(self, key, default="", converter=None):
+    def list(self, key, default, converter=None):
         # type: (Text, Text, Optional[Callable[..., Any]]) -> List[Any]
         return list(
             self._tidy_iterable(key, self.raw(key, default), converter=converter)
@@ -1034,13 +1034,13 @@ class Environment(object):
             self._tidy_iterable(key, self.raw(key, default), converter=converter)
         )
 
-    def frozenset(self, key, default="", converter=None):
+    def frozenset(self, key, default, converter=None):
         # type: (Text, Text, Optional[Callable[..., Any]]) -> FrozenSet[Any]
         return frozenset(
             self._tidy_iterable(key, self.raw(key, default), converter=converter)
         )
 
-    def dict(self, key, default="", key_converter=None, value_converter=None):
+    def dict(self, key, default, key_converter=None, value_converter=None):
         # type: (Text, Text, Optional[Callable[..., Any]], Optional[Callable[..., Any]]) -> Dict[Any, Any]
         values = self._tidy_iterable(key, self.raw(key, default), converter=None)
         values_delimited = (v.partition("=") for v in values)
@@ -1072,14 +1072,14 @@ class Environment(object):
         )
         return dict(keys_values)
 
-    def json(self, key, default=""):
+    def json(self, key, default):
         # type: (Text, Text) -> Any
         value = self.text(key, default)
         return self.ensure.json(value)
 
     float = not_implemented
 
-    def one_of(self, key, default="", choices="", converter=None):
+    def one_of(self, key, default, choices="", converter=None):
         # type: (Text, Text, Text, Optional[Callable[..., Any]]) -> Any
         if converter is None:
             converter = functools.partial(self._tidy_raw_string, key=key)
