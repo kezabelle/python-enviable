@@ -158,10 +158,10 @@ except ImportError:
         CAN_PARSE_TEMPORAL = True
 
 
-__version_info__ = "0.2.2"
-__version__ = "0.2.2"
-version = "0.2.2"
-VERSION = "0.2.2"
+__version_info__ = "1.0.0"
+__version__ = "1.0.0"
+version = "1.0.0"
+VERSION = "1.0.0"
 
 
 def get_version():

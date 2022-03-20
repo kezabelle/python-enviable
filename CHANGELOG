@@ -1,7 +1,7 @@
 Change history for enviable
 ---------------------------
 
-?next?
+1.0.0
 ^^^^^^
 
 * **Breaking change**: the ``default`` argument of ``env.int``, ``env.text``, etc is now required, rather than defaulting to ``""``.
