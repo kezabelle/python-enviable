@@ -369,7 +369,7 @@ class EnvironmentCaster(object):
                 raise EnvironmentCastError(
                     f"Unable to convert stringified arguments representation into timedelta"
                 )
-        elif ";" in value or ':' in value:
+        elif ";" in value or ":" in value:
             # we know for sure it's '1 week; 2 days; 3 seconds'
             # or '1 day, 6:10:12'
             return self._just_timedelta(value)
@@ -775,14 +775,24 @@ class Environment(object):
         # type: (Text, Text) -> Dict[Text, Union[boolean, int, Text, Dict[Text, Text]]]
         aliases = {
             "postgre": "postgres",
+            "postgregis": "postgis",
             "postgresql": "postgres",
+            "postgresqlgis": "postgis",
             "psycopg2": "postgres",
+            "psycopg2gis": "postgis",
             "psql": "postgres",
+            "psqlgis": "postgis",
             "pgsql": "postgres",
+            "pgsqlgis": "postgis",
             "pg": "postgres",
+            "pggis": "postgis",
+            "pgis": "postgis",
             "mariadb": "mysql",
             "maria": "mysql",
+            "mariadbgis": "mysqlgis",
+            "mariagis": "mysqlgis",
             "mysqlclient": "mysql",
+            "mysqlclientgis": "mysqlgis",
             "sqlite3": "sqlite",
             "mysql-connector": "mysqlconnector",
             "mysql-connecter": "mysqlconnector",
@@ -791,6 +801,7 @@ class Environment(object):
             "awsredshift": "redshift",
             "aws_redshift": "redshift",
             "aws-redshift": "redshift",
+            "ldapdb": "ldap",
         }
 
         builtin_scheme_map = {
@@ -801,6 +812,9 @@ class Environment(object):
             "redshift": "django_redshift_backend",
             "oracle": "django.db.backends.oracle",
             "mssql": "mssql",  # https://github.com/microsoft/mssql-django
+            "ldap": "ldapdb.backends.ldap",  # https://github.com/django-ldapdb/django-ldapdb
+            "mysqlgis": "django.contrib.gis.db.backends.mysql",
+            "postgis": "django.contrib.gis.db.backends.postgis",
         }
 
         def int_or_none(item_to_convert):
@@ -836,21 +850,50 @@ class Environment(object):
             # dotted path to selected engine.
             engine = env.ensure.importable(result.scheme)
 
-        path = result.path.strip("/")
+        path = result.path[1:]
         host, port = result._hostinfo
-        # It got parsed as the port part, so it's missing the colon prefix
-        if engine == "django.db.backends.sqlite3" and port == "memory:":
-            if result.path and result.path != "/":
-                raise EnvironmentCastError(
-                    f"Unexpected path ({result.path}) for an in-memory SQLite database"
-                )
-            path = ":memory:"
-            port = None
+        if engine == "django.db.backends.sqlite3":
+            # It got parsed as the port part, so it's missing the colon prefix
+            if port == "memory:":
+                if result.path and result.path != "/":
+                    raise EnvironmentCastError(
+                        f"Unexpected path ({result.path}) for an in-memory SQLite database"
+                    )
+                path = ":memory:"
+                port = None
+                host = None
+            # empty = memory, for compatibility with django-environ & dj-database-url
+            # which apparently do it for sqlalchemy:
+            # https://github.com/joke2k/django-environ/blob/44ac6649ad6135ff4246371880298bf732cd1c52/environ/environ.py#L487-L492
+            # https://github.com/jacobian/dj-database-url/blob/1937ed9e61d273163353c8546825dd529ce8546c/dj_database_url.py#L98-L101
+            elif path == "":
+                path = ":memory:"
+                port = None
+                host = None
+        # Complex case for postgres family stuff, for compatibility with
+        # django-environ
+        # https://github.com/joke2k/django-environ/blob/44ac6649ad6135ff4246371880298bf732cd1c52/environ/environ.py#L513-L517
+        elif path and path[0] == "/":
+            if "cloudsql" in path or engine in {
+                "django.db.backends.postgresql",
+                "django.contrib.gis.db.backends.postgis",
+            }:
+                host, path = path.rsplit("/", 1)
+        # Special-case for oracle.
+        # https://github.com/joke2k/django-environ/blob/44ac6649ad6135ff4246371880298bf732cd1c52/environ/environ.py#L519-L521
+        elif engine == "django.db.backends.oracle" and not path:
+            path = host
             host = None
+        # Special-case LDAP, fo compatibility with django-environ
+        # https://github.com/joke2k/django-environ/blob/44ac6649ad6135ff4246371880298bf732cd1c52/environ/environ.py#L496-L502
+        elif engine == "ldapdb.backends.ldap":
+            path = '{}://{}'.format(result.scheme, host)
+            if port:
+                path += ":{}".format(port)
 
         parsed_config = {
             "ENGINE": engine,
-            "NAME": path,
+            "NAME": unquote(path),
             "OPTIONS": {},
         }
         if result.username:
@@ -888,6 +931,35 @@ class Environment(object):
                     parsed_config.update({capkey: converter(value)})
                 else:
                     parsed_config.update({key: self.ensure.text(value)})
+
+        # Special case, setting the ssl-ca into a nested dictionary
+        # for compatibility with dj-database-url
+        # https://github.com/jacobian/dj-database-url/blob/1937ed9e61d273163353c8546825dd529ce8546c/dj_database_url.py#L133-L135
+        if "ssl-ca" in parsed_config["OPTIONS"] and engine in {
+            "django.db.backends.mysql",
+            "django.contrib.gis.db.backends.mysql",
+        }:
+            keypath = parsed_config["OPTIONS"].pop("ssl-ca")
+            parsed_config["OPTIONS"].setdefault("ssl", {})
+            parsed_config["OPTIONS"]["ssl"]["ca"] = self.ensure.text(keypath)
+
+        # Special-case, append the search path if currentSchema is given for a
+        # postgres based engine. For compatibility with dj-database-url
+        # https://github.com/jacobian/dj-database-url/blob/1937ed9e61d273163353c8546825dd529ce8546c/dj_database_url.py#L142-L149
+        # https://stackoverflow.com/questions/51360469/django-postgresql-set-statement-timeout
+        # https://www.postgresql.org/docs/9.6/libpq-connect.html#LIBPQ-PARAMKEYWORDS
+        # https://www.postgresql.org/docs/9.2/config-setting.html#CONFIG-SETTING-OTHER-METHODS
+        if "currentSchema" in parsed_config["OPTIONS"] and engine in {
+            "django.db.backends.postgresql",
+            "django.contrib.gis.db.backends.postgis",
+            "django_redshift_backend",
+        }:
+            schema = parsed_config["OPTIONS"].pop("currentSchema")
+            parsed_config["OPTIONS"].setdefault("options", "")
+            parsed_config["OPTIONS"]["options"] += " -c search_path={!s}".format(schema)
+            parsed_config["OPTIONS"]["options"] = parsed_config["OPTIONS"][
+                "options"
+            ].strip()
 
         return parsed_config
 
@@ -1594,7 +1666,7 @@ if __name__ == "__main__":
                     "sqlite:////tmp/my-tmp-sqlite.db",
                     {
                         "ENGINE": "django.db.backends.sqlite3",
-                        "NAME": "tmp/my-tmp-sqlite.db",
+                        "NAME": "/tmp/my-tmp-sqlite.db",
                         "OPTIONS": {},
                     },
                 ),
@@ -1655,9 +1727,17 @@ if __name__ == "__main__":
                         "USER": "user",
                         "NAME": "dbname",
                         "HOST": "/cloudsql/project-1234:us-central1:instance",
+                        "OPTIONS": {},
                     },
                 ),
-                ("sqlite://missing-slash-path", {}),
+                (
+                    "sqlite://missing-slash-path",
+                    {
+                        "ENGINE": "django.db.backends.sqlite3",
+                        "NAME": ":memory:",
+                        "OPTIONS": {},
+                    },
+                ),
                 (
                     "'postgres://user:pass@host:1234/dbname?conn_max_age=600'",
                     {
@@ -1722,11 +1802,27 @@ if __name__ == "__main__":
                 ),
                 (
                     "postgis://uf07k1i6d8ia0v:wegauwhgeuioweg@ec2-107-21-253-135.compute-1.amazonaws.com:5431/d8r82722r2kuvn",
-                    {},
+                    {
+                        "ENGINE": "django.contrib.gis.db.backends.postgis",
+                        "HOST": "ec2-107-21-253-135.compute-1.amazonaws.com",
+                        "NAME": "d8r82722r2kuvn",
+                        "OPTIONS": {},
+                        "PASSWORD": "wegauwhgeuioweg",
+                        "PORT": 5431,
+                        "USER": "uf07k1i6d8ia0v",
+                    },
                 ),
                 (
                     "mysqlgis://uf07k1i6d8ia0v:wegauwhgeuioweg@ec2-107-21-253-135.compute-1.amazonaws.com:5431/d8r82722r2kuvn",
-                    {},
+                    {
+                        "ENGINE": "django.contrib.gis.db.backends.mysql",
+                        "HOST": "ec2-107-21-253-135.compute-1.amazonaws.com",
+                        "NAME": "d8r82722r2kuvn",
+                        "OPTIONS": {},
+                        "PASSWORD": "wegauwhgeuioweg",
+                        "PORT": 5431,
+                        "USER": "uf07k1i6d8ia0v",
+                    },
                 ),
                 (
                     "mysql://bea6eb025ca0d8:69772142@us-cdbr-east.cleardb.com/heroku_97681db3eff7580?reconnect=true",
@@ -1797,7 +1893,15 @@ if __name__ == "__main__":
             dj_database_url_examples = (
                 (
                     "postgres://uf07k1i6d8ia0v:wegauwhgeuioweg@ec2-107-21-253-135.compute-1.amazonaws.com:5431/d8r82722r2kuvn",
-                    {},
+                    {
+                        "ENGINE": "django.db.backends.postgresql",
+                        "HOST": "ec2-107-21-253-135.compute-1.amazonaws.com",
+                        "NAME": "d8r82722r2kuvn",
+                        "OPTIONS": {},
+                        "PASSWORD": "wegauwhgeuioweg",
+                        "PORT": 5431,
+                        "USER": "uf07k1i6d8ia0v",
+                    },
                 ),
                 (
                     "postgres://%2Fvar%2Frun%2Fpostgresql/d8r82722r2kuvn",
@@ -1855,7 +1959,15 @@ if __name__ == "__main__":
                 ),
                 (
                     "mysql-connector://uf07k1i6d8ia0v:wegauwhgeuioweg@ec2-107-21-253-135.compute-1.amazonaws.com:5431/d8r82722r2kuvn",
-                    {},
+                    {
+                        "ENGINE": "mysql.connector.django",
+                        "HOST": "ec2-107-21-253-135.compute-1.amazonaws.com",
+                        "NAME": "d8r82722r2kuvn",
+                        "OPTIONS": {},
+                        "PASSWORD": "wegauwhgeuioweg",
+                        "PORT": 5431,
+                        "USER": "uf07k1i6d8ia0v",
+                    },
                 ),
                 # (
                 #     "django_mysqlpool.backends.mysqlpool://bea6eb025ca0d8:69772142@us-cdbr-east.cleardb.com/heroku_97681db3eff7580?reconnect=true",
@@ -1915,7 +2027,7 @@ if __name__ == "__main__":
                 (
                     "oracle://scott:tiger@/(DESCRIPTION=(ADDRESS_LIST=(ADDRESS=(PROTOCOL=TCP)(HOST=oraclehost)(PORT=1521)))(CONNECT_DATA=(SID=hr)))",
                     {
-                        "ENGINE": "oracle",
+                        "ENGINE": "django.db.backends.oracle",
                         "NAME": "(DESCRIPTION=(ADDRESS_LIST=(ADDRESS=(PROTOCOL=TCP)(HOST=oraclehost)(PORT=1521)))(CONNECT_DATA=(SID=hr)))",
                         "OPTIONS": {},
                         "PASSWORD": "tiger",
@@ -1947,7 +2059,7 @@ if __name__ == "__main__":
                 (
                     "mssql://uf07k1i6d8ia0v:wegauwhgeuioweg@ec2-107-21-253-135.compute-1.amazonaws.com/d8r82722r2kuvn?driver=ODBC Driver 13 for SQL Server",
                     {
-                        "ENGINE": "sql_server.pyodbc",
+                        "ENGINE": "mssql",
                         "HOST": "ec2-107-21-253-135.compute-1.amazonaws.com",
                         "NAME": "d8r82722r2kuvn",
                         "OPTIONS": {"driver": "ODBC Driver 13 for SQL Server"},
@@ -1958,7 +2070,7 @@ if __name__ == "__main__":
                 (
                     "mssql://uf07k1i6d8ia0v:wegauwhgeuioweg@ec2-107-21-253-135.compute-1.amazonaws.com\\insnsnss:12345/d8r82722r2kuvn?driver=ODBC Driver 13 for SQL Server",
                     {
-                        "ENGINE": "sql_server.pyodbc",
+                        "ENGINE": "mssql",
                         "HOST": "ec2-107-21-253-135.compute-1.amazonaws.com\\insnsnss",
                         "NAME": "d8r82722r2kuvn",
                         "OPTIONS": {"driver": "ODBC Driver 13 for SQL Server"},
